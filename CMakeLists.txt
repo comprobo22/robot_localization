@@ -24,6 +24,11 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+install(PROGRAMS
+        robot_localization/pf.py
+        robot_localization/pf_scaffold.py
+        DESTINATION lib/${PROJECT_NAME})
+
 ament_python_install_package(robot_localization)
 
 ament_package()
