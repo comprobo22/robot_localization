@@ -29,6 +29,10 @@ install(PROGRAMS
         robot_localization/pf_scaffold.py
         DESTINATION lib/${PROJECT_NAME})
 
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME})
+
 ament_python_install_package(robot_localization)
 
 ament_package()
