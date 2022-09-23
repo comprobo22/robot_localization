@@ -8,6 +8,8 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros.transform_broadcaster import TransformBroadcaster
 from angle_helpers import euler_from_quaternion
+from rclpy.time import Time
+from rclpy.duration import Duration
 import math
 import PyKDL
 
@@ -25,6 +27,8 @@ class TFHelper(object):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, node)
         self.tf_broadcaster = TransformBroadcaster(node)
+        self.node = node        # hold onto this for logging
+        self.transform_tolerance = Duration(seconds=0.1)    # tolerance for mismatch between scan and odom timestamp
 
     def convert_translation_rotation_to_pose(self, translation, rotation):
         """ Convert from representation of a pose as translation and rotation
@@ -83,36 +87,45 @@ class TFHelper(object):
         else:
             return d2
 
-    def fix_map_to_odom_transform(self, robot_pose, timestamp):
+    def fix_map_to_odom_transform(self, robot_pose, odom_pose):
         """ This method constantly updates the offset of the map and
             odometry coordinate systems based on the latest results from
             the localizer.
 
-            robot_pose should be of type geometry_msgs/Pose and timestamp is of
-            type rospy.Time and represents the time at which the robot's pose
-            corresponds.
+            robot_pose: should be of type geometry_msgs/msg/Pose and represent 
+                the robot's position within the map
+            odom_pose: should be of type geometry_msgs/msg/Pose and represent
+                the robot's position within the odometry coordinate system
+            timestamp: the timestamp to associate with this transform
             """
         (translation, rotation) = \
             self.convert_pose_inverse_transform(robot_pose)
-        p = PoseStamped(
-            pose=self.convert_translation_rotation_to_pose(translation,
-                                                           rotation),
-            header=Header(stamp=timestamp, frame_id='base_footprint'))
-        self.odom_to_map = self.tf_buffer.transform(p,
-                                                    'odom',
-                                                    timeout=rclpy.duration.Duration(seconds=1.0))
-        self.timestamp = timestamp
-        (self.translation, self.rotation) = \
-            self.convert_pose_inverse_transform(self.odom_to_map.pose)
+        odom_pose_frame = PyKDL.Frame(V=PyKDL.Vector(x=odom_pose.position.x,
+                                                     y=odom_pose.position.y,
+                                                     z=odom_pose.position.z),
+                                      R=PyKDL.Rotation.Quaternion(x=odom_pose.orientation.x,
+                                                                  y=odom_pose.orientation.y,
+                                                                  z=odom_pose.orientation.z,
+                                                                  w=odom_pose.orientation.w))
+        robot_pose_frame = PyKDL.Frame(V=PyKDL.Vector(x=translation[0],
+                                                      y=translation[1],
+                                                      z=translation[2]),
+                                       R=PyKDL.Rotation.Quaternion(x=rotation[0],
+                                                                   y=rotation[1],
+                                                                   z=rotation[2],
+                                                                   w=rotation[3]))
 
-    def send_last_map_to_odom_transform(self, map_frame, odom_frame):
-        self.logger.info('sending')
+
+        odom_to_map = robot_pose_frame * PyKDL.Frame.Inverse(odom_pose_frame)
+        self.translation = odom_to_map.p
+        self.rotation = odom_to_map.M.GetQuaternion()
+
+    def send_last_map_to_odom_transform(self, map_frame, odom_frame, timestamp):
         if (not hasattr(self, 'translation') or
-            not hasattr(self, 'rotation') or
-            not hasattr(self, 'timestamp')):
+            not hasattr(self, 'rotation')):
             return
         transform = TransformStamped()
-        transform.header.stamp = self.timestamp
+        transform.header.stamp = timestamp.to_msg()
         transform.header.frame_id = map_frame
         transform.child_frame_id = odom_frame
         transform.transform.translation.x = self.translation[0]
@@ -120,6 +133,24 @@ class TFHelper(object):
         transform.transform.translation.z = self.translation[2]
         transform.transform.rotation.x = self.rotation[0]
         transform.transform.rotation.y = self.rotation[1]
-        transform.transform.rotation.z = self.translation[2]
-        transform.transform.rotation.w = self.translation[3]
+        transform.transform.rotation.z = self.rotation[2]
+        transform.transform.rotation.w = self.rotation[3]
         self.tf_broadcaster.sendTransform(transform)
+
+    def get_matching_odom_pose(self, odom_frame, base_frame, timestamp):
+        if self.tf_buffer.can_transform(odom_frame, base_frame, timestamp):
+            # we can get the pose at the exact right time
+            return stamped_transform_to_pose(self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, msg.header.stamp))
+        elif self.tf_buffer.can_transform(odom_frame,
+                                          base_frame,
+                                          Time()):
+            most_recent = self.tf_buffer.lookup_transform(odom_frame,
+                                                          base_frame,
+                                                          Time())
+            delta_t = Time.from_msg(timestamp) - Time.from_msg(most_recent.header.stamp)
+            if delta_t > self.transform_tolerance:
+                self.node.get_logger().warn("throwing away a scan") 
+                return None
+            return stamped_transform_to_pose(most_recent)
+        else:
+            return None

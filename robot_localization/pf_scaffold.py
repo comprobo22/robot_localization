@@ -64,8 +64,6 @@ class ParticleFilter(Node):
             pose_listener: a subscriber that listens for new approximate pose estimates (i.e. generated through the rviz GUI)
             particle_pub: a publisher for the particle cloud
             laser_subscriber: listens for new scan data on topic self.scan_topic
-            tf_listener: listener for coordinate transforms
-            tf_broadcaster: broadcaster for coordinate transforms
             particle_cloud: a list of particles representing a probability distribution over robot poses
             current_odom_xy_theta: the pose of the robot in the odometry frame when the last filter update was performed.
                                    The pose is expressed as a list [x,y,theta] (where theta is the yaw)
@@ -85,8 +83,6 @@ class ParticleFilter(Node):
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
-
-        self.transform_tolerance = Duration(seconds=0.1)    # tolerance for mismatch between scan and odom timestamp
 
         # TODO: define additional constants if needed
 
@@ -110,10 +106,9 @@ class ParticleFilter(Node):
         self.initialized = True
 
     def run_loop(self):
-        self.get_logger().info('looping')
-        self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame)
+        self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame, self.get_clock().now())
 
-    def update_robot_pose(self, timestamp):
+    def update_robot_pose(self):
         """ Update the estimate of the robot's pose given the updated particles.
             There are two logical methods for this:
                 (1): compute the mean pose
@@ -126,7 +121,8 @@ class ParticleFilter(Node):
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
 
-        self.transform_helper.fix_map_to_odom_transform(self.robot_pose, timestamp)
+        self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
+                                                        self.odom_pose)
 
     def projected_scan_received(self, msg):
         self.last_projected_stable_scan = msg
@@ -202,7 +198,7 @@ class ParticleFilter(Node):
         # TODO create particles
 
         self.normalize_particles()
-        self.update_robot_pose(timestamp)
+        self.update_robot_pose()
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
@@ -218,36 +214,34 @@ class ParticleFilter(Node):
                                             frame_id=self.map_frame),
                                   poses=particles_conv))
 
+
     def scan_received(self, msg):
         """ This is the default logic for what to do when processing scan data.
             Feel free to modify this, however, we hope it will provide a good
-            guide.  The input msg is an object of type sensor_msgs/LaserScan """
-        print("scan received")
+            guide.  The input msg is an object of type sensor_msgs/msg/LaserScan """
         if not self.initialized:
             # wait for initialization to complete
             return
 
         if not self.transform_helper.tf_buffer.can_transform(self.base_frame, msg.header.frame_id, msg.header.stamp):
             # need to know how to transform the laser to the base frame
-            # this will be given by either Gazebo or neato_node
+            # this will be given by either Gazebo, neato_node, or a bag file
             return
-        self.laser_pose = stamped_transform_to_pose(self.transform_helper.tf_buffer.lookup_transform(self.base_frame, msg.header.frame_id, Time()))
-        if self.transform_helper.tf_buffer.can_transform(self.odom_frame, self.base_frame, msg.header.stamp):
-            # we can get the pose at the exact right time
-            self.odom_pose = stamped_transform_to_pose(self.transform_helper.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, msg.header.stamp))
-        elif self.transform_helper.tf_buffer.can_transform(self.odom_frame, self.base_frame, Time()):
-            most_recent_transform = self.transform_helper.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, Time())
-            delta_t = Time.from_msg(msg.header.stamp) - Time.from_msg(most_recent_transform.header.stamp)
-            self.get_logger().info("{0}".format(delta_t))
-            if delta_t > Duration(seconds=0.1):
-                self.get_logger().warn("throwing away a scan") 
-                return
-            self.odom_pose = stamped_transform_to_pose(most_recent_transform)
-        else:
+
+        # the laser pose could be helpful if it differs significantly from base_footprint (not the case for us)
+        self.laser_pose = stamped_transform_to_pose(
+            self.transform_helper.tf_buffer.lookup_transform(self.base_frame,
+                                                             msg.header.frame_id,
+                                                             Time()))
+        
+        new_pose = self.transform_helper.get_matching_odom_pose(self.odom_frame,
+                                                                self.base_frame,
+                                                                msg.header.stamp)
+        if new_pose is None:
+            # something went wrong
             return
-        self.get_logger().info(str(self.odom_pose))
-        # calculate pose of laser relative to the robot base
-        # find out where the robot thinks it is based on its odometry
+        self.odom_pose = new_pose
+
         new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
         self.get_logger().info("{0}".format(new_odom_xy_theta))
         if not self.current_odom_xy_theta:
