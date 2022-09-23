@@ -40,6 +40,7 @@ def generate_launch_description():
              executable='pf.py',
              name='my_pf',
              parameters=[{'use_sim_time': use_sim_time}],
+             emulate_tty=True,
              output='screen'),
         start_lifecycle_manager
     ])
