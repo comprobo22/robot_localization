@@ -53,7 +53,7 @@ class ParticleFilter(Node):
     """ The class that represents a Particle Filter ROS Node
         Attributes list:
             initialized: a Boolean flag to communicate to other class methods that initializaiton is complete
-            base_frame: the name of the robot base coordinate frame (should be "base_link" for most robots)
+            base_frame: the name of the robot base coordinate frame (should be "base_footprint" for most robots)
             map_frame: the name of the map coordinate frame (should be "map" in most cases)
             odom_frame: the name of the odometry coordinate frame (should be "odom" in most cases)
             scan_topic: the name of the scan topic to listen to (should be "scan" in most cases)
@@ -221,7 +221,7 @@ class ParticleFilter(Node):
             # wait for initialization to complete
             return
 
-        if not self.transform_helper.tf_buffer.can_transform(self.base_frame, msg.header.frame_id, msg.header.stamp):
+        if not self.transform_helper.tf_buffer.can_transform(self.base_frame, msg.header.frame_id, Time()):
             # need to know how to transform the laser to the base frame
             # this will be given by either Gazebo, neato_node, or a bag file
             return
@@ -231,7 +231,6 @@ class ParticleFilter(Node):
             self.transform_helper.tf_buffer.lookup_transform(self.base_frame,
                                                              msg.header.frame_id,
                                                              Time()))
-        
         new_pose = self.transform_helper.get_matching_odom_pose(self.odom_frame,
                                                                 self.base_frame,
                                                                 msg.header.stamp)
