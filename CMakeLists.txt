@@ -26,7 +26,6 @@ endif()
 
 install(PROGRAMS
         robot_localization/pf.py
-        robot_localization/pf_scaffold.py
         DESTINATION lib/${PROJECT_NAME})
 
 

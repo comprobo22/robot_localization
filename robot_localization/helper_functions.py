@@ -140,7 +140,7 @@ class TFHelper(object):
     def get_matching_odom_pose(self, odom_frame, base_frame, timestamp):
         if self.tf_buffer.can_transform(odom_frame, base_frame, timestamp):
             # we can get the pose at the exact right time
-            return stamped_transform_to_pose(self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, msg.header.stamp))
+            return stamped_transform_to_pose(self.tf_buffer.lookup_transform(odom_frame, base_frame, timestamp))
         elif self.tf_buffer.can_transform(odom_frame,
                                           base_frame,
                                           Time()):
