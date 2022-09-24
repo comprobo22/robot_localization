@@ -104,7 +104,7 @@ class ParticleFilter(Node):
         self.occupancy_field = OccupancyField(self)
         self.transform_helper = TFHelper(self)
         self.main_loop_timer = self.create_timer(0.2, self.run_loop)
-        self.transform_update_timer = self.create_timer(0.2, self.pub_latest_transform)
+        self.transform_update_timer = self.create_timer(0.05, self.pub_latest_transform)
         self.initialized = True
 
     def pub_latest_transform(self):
@@ -133,7 +133,7 @@ class ParticleFilter(Node):
                                                                            self.base_frame,
                                                                            msg.header.stamp)
         if new_pose is None:
-            if delta_t < Duration(seconds=0.0):
+            if delta_t is not None and delta_t < Duration(seconds=0.0):
                 # we will never get this transform, since it is before our oldest one
                 self.scan_to_process = None
             return
