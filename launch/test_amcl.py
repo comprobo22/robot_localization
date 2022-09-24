@@ -10,11 +10,8 @@ import os
 def generate_launch_description():
     map_file = DeclareLaunchArgument('map_yaml')
 
-    lifecycle_nodes = ['map_server']
     lifecycle_nodes_built_in = ['map_server', 'amcl']
-
-    # TODO: no support currently for not using sim time
-    use_sim_time = True
+    use_sim_time = DeclareLaunchArgument('use_sim_time', default_value="true")
     autostart = True
 
     start_lifecycle_manager_built_in = Node(
@@ -23,12 +20,13 @@ def generate_launch_description():
             name='lifecycle_manager',
             output='screen',
             emulate_tty=True,  # https://github.com/ros2/launch/issues/188
-            parameters=[{'use_sim_time': use_sim_time},
+            parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')},
                         {'autostart': autostart},
                         {'node_names': lifecycle_nodes_built_in}])
 
     return LaunchDescription([
         map_file,
+        use_sim_time,
         Node(
             package='nav2_map_server',
             executable='map_server',
@@ -39,7 +37,7 @@ def generate_launch_description():
         Node(package='nav2_amcl',
              executable='amcl',
              name='amcl',
-             parameters=[{'use_sim_time': use_sim_time}],
+             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
              output='screen'),
         start_lifecycle_manager_built_in,
     ])
