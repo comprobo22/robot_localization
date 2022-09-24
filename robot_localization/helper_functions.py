@@ -158,7 +158,19 @@ class TFHelper(object):
         else:
             return (None, None)
 
-    def convert_scan_to_polar_in_robot_frame(self, msg, laser_pose):
+    def convert_scan_to_polar_in_robot_frame(self, msg, base_frame):
+        """ Convert the scan data to a polar representation in the robot frame.
+            The reason that we have to do this differently than in the warmup project
+            is that the Turtlebot4's lidar frame is not oriented the same as the Neato.
+            If you use the results in (r, theta) you will have the correct angles and distances
+            relative to the robot.
+
+            Note: theta is in radians
+        """
+        laser_pose = stamped_transform_to_pose(
+            self.tf_buffer.lookup_transform(base_frame,
+                                            msg.header.frame_id,
+                                            Time()))
         rot = PyKDL.Rotation.Quaternion(x=laser_pose.orientation.x,
                                         y=laser_pose.orientation.y,
                                         z=laser_pose.orientation.z,

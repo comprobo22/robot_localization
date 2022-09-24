@@ -14,10 +14,12 @@ from copy import deepcopy
 from random import gauss
 from rclpy.duration import Duration
 import math
+import time
 import numpy as np
 from numpy.random import random_sample
 from occupancy_field import OccupancyField
-from helper_functions import TFHelper, stamped_transform_to_pose
+from helper_functions import TFHelper
+from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
 
 class Particle(object):
@@ -33,7 +35,7 @@ class Particle(object):
         """ Construct a new Particle
             x: the x-coordinate of the hypothesis relative to the map frame
             y: the y-coordinate of the hypothesis relative ot the map frame
-            theta: the yaw of the hypothesis relative to the map frame
+            theta: the yaw of KeyboardInterruptthe hypothesis relative to the map frame
             w: the particle weight (the class does not ensure that particle weights are normalized """ 
         self.w = w
         self.theta = theta
@@ -91,7 +93,7 @@ class ParticleFilter(Node):
         self.create_subscription(PoseWithCovarianceStamped, 'initial_pose', self.update_initial_pose, 10)
 
         # publish the current particle cloud.  This enables viewing particles in rviz.
-        self.particle_pub = self.create_publisher(PoseArray, "particlecloud", 10)
+        self.particle_pub = self.create_publisher(PoseArray, "particlecloud", qos_profile_sensor_data)
 
         # laser_subscriber listens for data from the lidar
         self.create_subscription(LaserScan, self.scan_topic, self.scan_received, 10)
@@ -140,11 +142,6 @@ class ParticleFilter(Node):
             # this will be given by either Gazebo, neato_node, or a bag file
             return
 
-        # the laser pose could be helpful if it differs significantly from base_footprint (not the case for us)
-        self.laser_pose = stamped_transform_to_pose(
-            self.transform_helper.tf_buffer.lookup_transform(self.base_frame,
-                                                             msg.header.frame_id,
-                                                             Time()))
         (new_pose, delta_t) = self.transform_helper.get_matching_odom_pose(self.odom_frame,
                                                                            self.base_frame,
                                                                            msg.header.stamp)
@@ -153,13 +150,8 @@ class ParticleFilter(Node):
                 # we will never get this transform, since it is before our oldest one
                 self.scan_to_process = None
             return
-        # Convert the scan data to a polar representation in the robot frame.
-        # The reason that we have to do this differently than in the warmup project
-        # is that the Turtlebot4's lidar frame is not oriented the same as the Neato.
-        # If you use the results in (r, theta) you will have the correct angles and distances
-        # relative to the robot.
-        # Note: theta is in radians
-        (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.laser_pose)
+        
+        (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.base_frame)
         print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
         # clear the current scan so that we can process the next one
         self.scan_to_process = None
