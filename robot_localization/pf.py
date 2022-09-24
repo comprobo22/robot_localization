@@ -97,16 +97,66 @@ class ParticleFilter(Node):
         # laser_subscriber listens for data from the lidar
         self.create_subscription(LaserScan, self.scan_topic, self.scan_received, 10)
 
+        self.scan_to_process = None
         self.particle_cloud = []
 
         self.current_odom_xy_theta = []
         self.occupancy_field = OccupancyField(self)
         self.transform_helper = TFHelper(self)
-        self.transform_update_timer = self.create_timer(0.2, self.run_loop)
+        self.main_loop_timer = self.create_timer(0.2, self.run_loop)
+        self.transform_update_timer = self.create_timer(0.2, self.pub_latest_transform)
         self.initialized = True
 
-    def run_loop(self):
+    def pub_latest_transform(self):
+        """ This function takes care of sending out the map to odom transform """
         self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame, self.get_clock().now())
+
+    def run_loop(self):
+        if self.scan_to_process is None:
+            return
+        msg = self.scan_to_process
+        if not self.initialized:
+            # wait for initialization to complete
+            return
+
+        if not self.transform_helper.tf_buffer.can_transform(self.base_frame, msg.header.frame_id, Time()):
+            # need to know how to transform the laser to the base frame
+            # this will be given by either Gazebo, neato_node, or a bag file
+            return
+
+        # the laser pose could be helpful if it differs significantly from base_footprint (not the case for us)
+        self.laser_pose = stamped_transform_to_pose(
+            self.transform_helper.tf_buffer.lookup_transform(self.base_frame,
+                                                             msg.header.frame_id,
+                                                             Time()))
+        (new_pose, delta_t) = self.transform_helper.get_matching_odom_pose(self.odom_frame,
+                                                                           self.base_frame,
+                                                                           msg.header.stamp)
+        if new_pose is None:
+            if delta_t < Duration(seconds=0.0):
+                # we will never get this transform, since it is before our oldest one
+                self.scan_to_process = None
+            return
+        # clear this so we can get the next one
+        self.scan_to_process = None
+        self.odom_pose = new_pose
+        new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
+        self.get_logger().info("{0}".format(new_odom_xy_theta))
+        if not self.current_odom_xy_theta:
+            self.current_odom_xy_theta = new_odom_xy_theta
+        elif not self.particle_cloud:
+            # now that we have all of the necessary transforms we can update the particle cloud
+            self.initialize_particle_cloud(msg.header.stamp)
+        elif (math.fabs(new_odom_xy_theta[0] - self.current_odom_xy_theta[0]) > self.d_thresh or
+              math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or
+              math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
+            # we have moved far enough to do an update!
+            self.update_particles_with_odom()    # update based on odometry
+            self.update_particles_with_laser(msg)   # update based on laser scan
+            self.update_robot_pose()                # update robot's pose based on particles
+            self.resample_particles()               # resample particles to focus on areas of high density
+        # publish particles (so things like rviz can see them)
+        self.publish_particles(msg.header.stamp)
 
     def update_robot_pose(self):
         """ Update the estimate of the robot's pose given the updated particles.
@@ -123,9 +173,6 @@ class ParticleFilter(Node):
 
         self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                         self.odom_pose)
-
-    def projected_scan_received(self, msg):
-        self.last_projected_stable_scan = msg
 
     def update_particles_with_odom(self):
         """ Update the particles using the newly given odometry pose.
@@ -214,47 +261,10 @@ class ParticleFilter(Node):
 
 
     def scan_received(self, msg):
-        """ This is the default logic for what to do when processing scan data.
-            Feel free to modify this, however, we hope it will provide a good
-            guide.  The input msg is an object of type sensor_msgs/msg/LaserScan """
-        if not self.initialized:
-            # wait for initialization to complete
-            return
-
-        if not self.transform_helper.tf_buffer.can_transform(self.base_frame, msg.header.frame_id, Time()):
-            # need to know how to transform the laser to the base frame
-            # this will be given by either Gazebo, neato_node, or a bag file
-            return
-
-        # the laser pose could be helpful if it differs significantly from base_footprint (not the case for us)
-        self.laser_pose = stamped_transform_to_pose(
-            self.transform_helper.tf_buffer.lookup_transform(self.base_frame,
-                                                             msg.header.frame_id,
-                                                             Time()))
-        new_pose = self.transform_helper.get_matching_odom_pose(self.odom_frame,
-                                                                self.base_frame,
-                                                                msg.header.stamp)
-        if new_pose is None:
-            # something went wrong (we might not have a good timestamp match)
-            return
-        self.odom_pose = new_pose
-        new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-        self.get_logger().info("{0}".format(new_odom_xy_theta))
-        if not self.current_odom_xy_theta:
-            self.current_odom_xy_theta = new_odom_xy_theta
-        elif not self.particle_cloud:
-            # now that we have all of the necessary transforms we can update the particle cloud
-            self.initialize_particle_cloud(msg.header.stamp)
-        elif (math.fabs(new_odom_xy_theta[0] - self.current_odom_xy_theta[0]) > self.d_thresh or
-              math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or
-              math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
-            # we have moved far enough to do an update!
-            self.update_particles_with_odom()    # update based on odometry
-            self.update_particles_with_laser(msg)   # update based on laser scan
-            self.update_robot_pose()                # update robot's pose based on particles
-            self.resample_particles()               # resample particles to focus on areas of high density
-        # publish particles (so things like rviz can see them)
-        self.publish_particles(msg.header.stamp)
+        # we throw away scans until we are done processing the previous scan
+        # self.scan_to_process is set to None in the run_loop 
+        if self.scan_to_process is None:
+            self.scan_to_process = msg
 
 def main(args=None):
     rclpy.init()

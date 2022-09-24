@@ -28,7 +28,7 @@ class TFHelper(object):
         self.tf_listener = TransformListener(self.tf_buffer, node)
         self.tf_broadcaster = TransformBroadcaster(node)
         self.node = node        # hold onto this for logging
-        self.transform_tolerance = Duration(seconds=0.1)    # tolerance for mismatch between scan and odom timestamp
+        self.transform_tolerance = Duration(seconds=0.08)    # tolerance for mismatch between scan and odom timestamp
 
     def convert_translation_rotation_to_pose(self, translation, rotation):
         """ Convert from representation of a pose as translation and rotation
@@ -138,9 +138,14 @@ class TFHelper(object):
         self.tf_broadcaster.sendTransform(transform)
 
     def get_matching_odom_pose(self, odom_frame, base_frame, timestamp):
+        """ Find the odometry position for a given timestamp.  We want to avoid blocking, so if the transform is
+            not ready, we return None.
+
+            returns: a tuple where the first element is the stamped transform and the second element is the
+                     delta in time between the requested time and the most recent transform available """
         if self.tf_buffer.can_transform(odom_frame, base_frame, timestamp):
             # we can get the pose at the exact right time
-            return stamped_transform_to_pose(self.tf_buffer.lookup_transform(odom_frame, base_frame, timestamp))
+            return (stamped_transform_to_pose(self.tf_buffer.lookup_transform(odom_frame, base_frame, timestamp)), Duration(seconds=0.0))
         elif self.tf_buffer.can_transform(odom_frame,
                                           base_frame,
                                           Time()):
@@ -148,9 +153,6 @@ class TFHelper(object):
                                                           base_frame,
                                                           Time())
             delta_t = Time.from_msg(timestamp) - Time.from_msg(most_recent.header.stamp)
-            if delta_t > self.transform_tolerance:
-                self.node.get_logger().warn("throwing away a scan") 
-                return None
-            return stamped_transform_to_pose(most_recent)
+            return (None, delta_t)
         else:
-            return None
+            return (None, None)
