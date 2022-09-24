@@ -137,15 +137,11 @@ class ParticleFilter(Node):
             # wait for initialization to complete
             return
 
-        if not self.transform_helper.tf_buffer.can_transform(self.base_frame, msg.header.frame_id, Time()):
-            # need to know how to transform the laser to the base frame
-            # this will be given by either Gazebo, neato_node, or a bag file
-            return
-
         (new_pose, delta_t) = self.transform_helper.get_matching_odom_pose(self.odom_frame,
                                                                            self.base_frame,
                                                                            msg.header.stamp)
         if new_pose is None:
+            # we were unable to get the pose of the robot corresponding to the scan timestamp
             if delta_t is not None and delta_t < Duration(seconds=0.0):
                 # we will never get this transform, since it is before our oldest one
                 self.scan_to_process = None
@@ -155,17 +151,17 @@ class ParticleFilter(Node):
         print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
         # clear the current scan so that we can process the next one
         self.scan_to_process = None
+
         self.odom_pose = new_pose
         new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
         print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
+
         if not self.current_odom_xy_theta:
             self.current_odom_xy_theta = new_odom_xy_theta
         elif not self.particle_cloud:
             # now that we have all of the necessary transforms we can update the particle cloud
             self.initialize_particle_cloud(msg.header.stamp)
-        elif (math.fabs(new_odom_xy_theta[0] - self.current_odom_xy_theta[0]) > self.d_thresh or
-              math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or
-              math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
+        elif self.moved_far_enough_to_update(new_odom_xy_theta):
             # we have moved far enough to do an update!
             self.update_particles_with_odom()    # update based on odometry
             self.update_particles_with_laser(r, theta)   # update based on laser scan
@@ -173,6 +169,12 @@ class ParticleFilter(Node):
             self.resample_particles()               # resample particles to focus on areas of high density
         # publish particles (so things like rviz can see them)
         self.publish_particles(msg.header.stamp)
+
+    def moved_far_enough_to_update(self, new_odom_xy_theta):
+        return math.fabs(new_odom_xy_theta[0] - self.current_odom_xy_theta[0]) > self.d_thresh or \
+               math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or \
+               math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh
+
 
     def update_robot_pose(self):
         """ Update the estimate of the robot's pose given the updated particles.
