@@ -1,9 +1,9 @@
 """ Some convenience functions for translating between various representations
     of a robot pose. """
 
+from urllib.robotparser import RobotFileParser
 from std_msgs.msg import Header
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion, TransformStamped
-import rclpy
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros.transform_broadcaster import TransformBroadcaster
@@ -11,6 +11,7 @@ from angle_helpers import euler_from_quaternion
 from rclpy.time import Time
 from rclpy.duration import Duration
 import math
+import numpy as np
 import PyKDL
 
 def stamped_transform_to_pose(t):
@@ -156,3 +157,11 @@ class TFHelper(object):
             return (None, delta_t)
         else:
             return (None, None)
+
+    def convert_scan_to_polar_in_robot_frame(self, msg, laser_pose):
+        rot = PyKDL.Rotation.Quaternion(x=laser_pose.orientation.x,
+                                        y=laser_pose.orientation.y,
+                                        z=laser_pose.orientation.z,
+                                        w=laser_pose.orientation.w)
+        laser_yaw = rot.GetRPY()[2]
+        return (msg.ranges, np.linspace(msg.angle_min+laser_yaw, msg.angle_max+laser_yaw, len(msg.ranges)))

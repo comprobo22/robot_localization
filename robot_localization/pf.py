@@ -12,9 +12,8 @@ from nav_msgs.srv import GetMap
 from copy import deepcopy
 from random import gauss
 from rclpy.duration import Duration
-import tf2_ros
 import math
-
+import time
 import numpy as np
 from numpy.random import random_sample
 from occupancy_field import OccupancyField
@@ -112,6 +111,12 @@ class ParticleFilter(Node):
         self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame, self.get_clock().now())
 
     def run_loop(self):
+        """ This is the main run_loop of our particle filter.  It checks to see if
+            any scans are ready and to be processed and will call several helper
+            functions to complete the processing.
+            
+            You do not need to modify this function, but it is helpful to understand it.
+        """
         if self.scan_to_process is None:
             return
         msg = self.scan_to_process
@@ -137,11 +142,20 @@ class ParticleFilter(Node):
                 # we will never get this transform, since it is before our oldest one
                 self.scan_to_process = None
             return
-        # clear this so we can get the next one
+        # Convert the scan data to a polar representation in the robot frame.
+        # The reason that we have to do this differently than in the warmup project
+        # is that the Turtlebot4's lidar frame is not oriented the same as the Neato.
+        # If you use the results in (r, theta) you will have the correct angles and distances
+        # relative to the robot.
+        # Note: theta is in radians
+        (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.laser_pose)
+        print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
+
+        # clear the current scan so that we can process the next one
         self.scan_to_process = None
         self.odom_pose = new_pose
         new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-        self.get_logger().info("{0}".format(new_odom_xy_theta))
+        print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
         if not self.current_odom_xy_theta:
             self.current_odom_xy_theta = new_odom_xy_theta
         elif not self.particle_cloud:
@@ -152,7 +166,7 @@ class ParticleFilter(Node):
               math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
             # we have moved far enough to do an update!
             self.update_particles_with_odom()    # update based on odometry
-            self.update_particles_with_laser(msg)   # update based on laser scan
+            self.update_particles_with_laser(r, theta)   # update based on laser scan
             self.update_robot_pose()                # update robot's pose based on particles
             self.resample_particles()               # resample particles to focus on areas of high density
         # publish particles (so things like rviz can see them)
@@ -205,8 +219,11 @@ class ParticleFilter(Node):
         self.normalize_particles()
         # TODO: fill out the rest of the implementation
 
-    def update_particles_with_laser(self, msg):
-        """ Updates the particle weights in response to the scan contained in the msg """
+    def update_particles_with_laser(self, r, theta):
+        """ Updates the particle weights in response to the scan data
+            r: the distance readings to obstacles
+            theta: the angle relative to the robot frame for each corresponding reading 
+        """
         # TODO: implement this
         pass
 
