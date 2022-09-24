@@ -6,17 +6,13 @@ import rclpy
 from threading import Thread
 from rclpy.time import Time
 from rclpy.node import Node
-from std_msgs.msg import Header, String
-from sensor_msgs.msg import LaserScan, PointCloud
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
-from nav_msgs.srv import GetMap
-from copy import deepcopy
-from random import gauss
+from std_msgs.msg import Header
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
 from rclpy.duration import Duration
 import math
 import time
 import numpy as np
-from numpy.random import random_sample
 from occupancy_field import OccupancyField
 from helper_functions import TFHelper
 from rclpy.qos import qos_profile_sensor_data
@@ -53,7 +49,6 @@ class Particle(object):
 class ParticleFilter(Node):
     """ The class that represents a Particle Filter ROS Node
         Attributes list:
-            initialized: a Boolean flag to communicate to other class methods that initializaiton is complete
             base_frame: the name of the robot base coordinate frame (should be "base_footprint" for most robots)
             map_frame: the name of the map coordinate frame (should be "map" in most cases)
             odom_frame: the name of the odometry coordinate frame (should be "odom" in most cases)
@@ -61,18 +56,19 @@ class ParticleFilter(Node):
             n_particles: the number of particles in the filter
             d_thresh: the amount of linear movement before triggering a filter update
             a_thresh: the amount of angular movement before triggering a filter update
-            laser_max_distance: the maximum distance to an obstacle we should use in a likelihood calculation
             pose_listener: a subscriber that listens for new approximate pose estimates (i.e. generated through the rviz GUI)
             particle_pub: a publisher for the particle cloud
-            laser_subscriber: listens for new scan data on topic self.scan_topic
+            last_scan_timestamp: this is used to keep track of the clock when using bags
+            scan_to_process: the scan that our run_loop should process next
+            occupancy_field: this helper class allows you to query the map for distance to closest obstacle
+            transform_helper: this helps with various transform operations (abstracting away the tf2 module)
             particle_cloud: a list of particles representing a probability distribution over robot poses
             current_odom_xy_theta: the pose of the robot in the odometry frame when the last filter update was performed.
                                    The pose is expressed as a list [x,y,theta] (where theta is the yaw)
-            map: the map we will be localizing ourselves in.  The map should be of type nav_msgs/OccupancyGrid
+            thread: this thread runs your main loop
     """
     def __init__(self):
         super().__init__('pf')
-        self.initialized = False        # make sure we don't perform updates before everything is setup
         self.base_frame = "base_footprint"   # the frame of the robot base
         self.map_frame = "map"          # the name of the map coordinate frame
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
@@ -83,11 +79,7 @@ class ParticleFilter(Node):
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
 
-        self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
-
         # TODO: define additional constants if needed
-
-        # Setup pubs and subs
 
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
         self.create_subscription(PoseWithCovarianceStamped, 'initial_pose', self.update_initial_pose, 10)
@@ -98,7 +90,13 @@ class ParticleFilter(Node):
         # laser_subscriber listens for data from the lidar
         self.create_subscription(LaserScan, self.scan_topic, self.scan_received, 10)
 
+        # this is used to keep track of the timestamps coming from bag files
+        # knowing this information helps us set the timestamp of our map -> odom
+        # transform correctly
+        self.last_scan_timestamp = None
+        # this is the current scan that our run_loop should process
         self.scan_to_process = None
+        # your particle cloud will go here
         self.particle_cloud = []
 
         self.current_odom_xy_theta = []
@@ -109,11 +107,13 @@ class ParticleFilter(Node):
         thread = Thread(target=self.loop_wrapper)
         thread.start()
         self.transform_update_timer = self.create_timer(0.05, self.pub_latest_transform)
-        self.initialized = True
 
     def pub_latest_transform(self):
         """ This function takes care of sending out the map to odom transform """
-        self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame, self.get_clock().now())
+        if self.last_scan_timestamp is None:
+            return
+        postdated_timestamp = Time.from_msg(self.last_scan_timestamp) + Duration(seconds=0.1)
+        self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame, postdated_timestamp)
 
     def loop_wrapper(self):
         """ This function takes care of calling the run_loop function repeatedly.
@@ -133,9 +133,6 @@ class ParticleFilter(Node):
         if self.scan_to_process is None:
             return
         msg = self.scan_to_process
-        if not self.initialized:
-            # wait for initialization to complete
-            return
 
         (new_pose, delta_t) = self.transform_helper.get_matching_odom_pose(self.odom_frame,
                                                                            self.base_frame,
@@ -217,7 +214,7 @@ class ParticleFilter(Node):
         """ Resample the particles according to the new particle weights.
             The weights stored with each particle should define the probability that a particular
             particle is selected in the resampling step.  You may want to make use of the given helper
-            function draw_random_sample.
+            function draw_random_sample in helper_functions.py.
         """
         # make sure the distribution is normalized
         self.normalize_particles()
@@ -232,20 +229,6 @@ class ParticleFilter(Node):
         pass
 
     @staticmethod
-    def draw_random_sample(choices, probabilities, n):
-        """ Return a random sample of n elements from the set choices with the specified probabilities
-            choices: the values to sample from represented as a list
-            probabilities: the probability of selecting each element in choices represented as a list
-            n: the number of samples
-        """
-        values = np.array(range(len(choices)))
-        probs = np.array(probabilities)
-        bins = np.add.accumulate(probs)
-        inds = values[np.digitize(random_sample(n), bins)]
-        samples = []
-        for i in inds:
-            samples.append(deepcopy(choices[int(i)]))
-        return samples
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -282,6 +265,7 @@ class ParticleFilter(Node):
 
 
     def scan_received(self, msg):
+        self.last_scan_timestamp = msg.header.stamp
         # we throw away scans until we are done processing the previous scan
         # self.scan_to_process is set to None in the run_loop 
         if self.scan_to_process is None:
