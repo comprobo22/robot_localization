@@ -3,6 +3,7 @@
 """ This is the starter code for the robot localization project """
 
 import rclpy
+from threading import Thread
 from rclpy.time import Time
 from rclpy.node import Node
 from std_msgs.msg import Header, String
@@ -13,7 +14,6 @@ from copy import deepcopy
 from random import gauss
 from rclpy.duration import Duration
 import math
-import time
 import numpy as np
 from numpy.random import random_sample
 from occupancy_field import OccupancyField
@@ -102,13 +102,24 @@ class ParticleFilter(Node):
         self.current_odom_xy_theta = []
         self.occupancy_field = OccupancyField(self)
         self.transform_helper = TFHelper(self)
-        self.main_loop_timer = self.create_timer(0.2, self.run_loop)
+
+        # we are using a thread to work around single threaded execution bottleneck
+        thread = Thread(target=self.loop_wrapper)
+        thread.start()
         self.transform_update_timer = self.create_timer(0.05, self.pub_latest_transform)
         self.initialized = True
 
     def pub_latest_transform(self):
         """ This function takes care of sending out the map to odom transform """
         self.transform_helper.send_last_map_to_odom_transform(self.map_frame, self.odom_frame, self.get_clock().now())
+
+    def loop_wrapper(self):
+        """ This function takes care of calling the run_loop function repeatedly.
+            We are using a separate thread to run the loop_wrapper to work around
+            issues with single threaded executors in ROS2 """
+        while True:
+            self.run_loop()
+            time.sleep(0.1)
 
     def run_loop(self):
         """ This is the main run_loop of our particle filter.  It checks to see if
@@ -150,7 +161,6 @@ class ParticleFilter(Node):
         # Note: theta is in radians
         (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.laser_pose)
         print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
-
         # clear the current scan so that we can process the next one
         self.scan_to_process = None
         self.odom_pose = new_pose
