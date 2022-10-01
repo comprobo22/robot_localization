@@ -207,8 +207,9 @@ class ParticleFilter(Node):
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
-
+        
         # TODO: modify particles using delta
+        # lol just apply the delta transform to each of the particles
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
@@ -219,6 +220,7 @@ class ParticleFilter(Node):
         # make sure the distribution is normalized
         self.normalize_particles()
         # TODO: fill out the rest of the implementation
+        # pop particles under a certain weight and redistribute around a value
 
     def update_particles_with_laser(self, r, theta):
         """ Updates the particle weights in response to the scan data
@@ -226,6 +228,7 @@ class ParticleFilter(Node):
             theta: the angle relative to the robot frame for each corresponding reading 
         """
         # TODO: implement this
+        # like paul did in class, take each point and find its closest obstacle (should be 0) and that becomes the inverse weight (error term)
         pass
 
     def update_initial_pose(self, msg):
@@ -242,8 +245,10 @@ class ParticleFilter(Node):
         if xy_theta is None:
             xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
         self.particle_cloud = []
-        # TODO create particles
 
+        for _ in range(self.n_particles):
+            noisy_pos = xy_theta + np.random.normal(0.0, 1.0, 3)
+            self.particle_cloud.append(Particle(x=noisy_pos[0], y=noisy_pos[1], w=1.0, theta=noisy_pos[2]))
         self.normalize_particles()
 
     def normalize_particles(self):
