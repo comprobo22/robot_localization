@@ -59,19 +59,6 @@ class TFHelper(object):
                                            z=rotation[2],
                                            w=rotation[3]))
 
-    def convert_pose_inverse_transform(self, pose):
-        rot = PyKDL.Rotation.Quaternion(x=pose.orientation.x,
-                                        y=pose.orientation.y,
-                                        z=pose.orientation.z,
-                                        w=pose.orientation.w)
-        t = PyKDL.Vector(x=pose.position.x,
-                         y=pose.position.y,
-                         z=pose.position.z)
-        transform = PyKDL.Frame(R=rot, V=t)
-        inverse_transform = PyKDL.Frame.Inverse(transform)
-        return (tuple(inverse_transform.p),
-                inverse_transform.M.GetQuaternion())
-
     def convert_pose_to_xy_and_theta(self, pose):
         """ Convert pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
         orientation_tuple = (pose.orientation.x,
@@ -116,8 +103,6 @@ class TFHelper(object):
                 the robot's position within the odometry coordinate system
             timestamp: the timestamp to associate with this transform
             """
-        (translation, rotation) = \
-            self.convert_pose_inverse_transform(robot_pose)
         odom_pose_frame = PyKDL.Frame(V=PyKDL.Vector(x=odom_pose.position.x,
                                                      y=odom_pose.position.y,
                                                      z=odom_pose.position.z),
@@ -125,15 +110,13 @@ class TFHelper(object):
                                                                   y=odom_pose.orientation.y,
                                                                   z=odom_pose.orientation.z,
                                                                   w=odom_pose.orientation.w))
-        robot_pose_frame = PyKDL.Frame(V=PyKDL.Vector(x=translation[0],
-                                                      y=translation[1],
-                                                      z=translation[2]),
-                                       R=PyKDL.Rotation.Quaternion(x=rotation[0],
-                                                                   y=rotation[1],
-                                                                   z=rotation[2],
-                                                                   w=rotation[3]))
-
-
+        robot_pose_frame = PyKDL.Frame(V=PyKDL.Vector(x=robot_pose.position.x,
+                                                      y=robot_pose.position.y,
+                                                      z=robot_pose.position.z),
+                                      R=PyKDL.Rotation.Quaternion(x=robot_pose.orientation.x,
+                                                                  y=robot_pose.orientation.y,
+                                                                  z=robot_pose.orientation.z,
+                                                                  w=robot_pose.orientation.w))
         odom_to_map = robot_pose_frame * PyKDL.Frame.Inverse(odom_pose_frame)
         self.translation = odom_to_map.p
         self.rotation = odom_to_map.M.GetQuaternion()
