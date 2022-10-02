@@ -23,7 +23,7 @@ from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
 
 def transform_scan_point_to_map(particle, r, theta):
-    return np.linalg.inv(particle.homogeneous_pose)@np.array([r*np.cos(theta), r*np.sin(theta), 1])
+    return particle.homogeneous_pose@np.array([r*np.cos(theta), r*np.sin(theta), 1])
 
 class Particle(object):
     """ Represents a hypothesis (particle) of the robot's pose consisting of x,y and theta (yaw)
@@ -55,7 +55,12 @@ class Particle(object):
         self.x = self.x + delta1
         self.y = self.y + delta2
         self.theta = self.theta + delta3
-        
+
+    def add_noise(self):
+        self.x += np.random.normal(0, .05)
+        self.y += np.random.normal(0, .05)
+        self.theta += np.random.normal(0, .1)
+
     def update_weight(self, new_w):
         self.w = new_w
 
@@ -91,8 +96,7 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
         self.scan_topic = "scan"        # the topic where we will get laser scans from 
 
-        # self.n_particles = 300          # the number of particles to use
-        self.n_particles = 1
+        self.n_particles = 300          # the number of particles to use
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
 
@@ -203,8 +207,8 @@ class ParticleFilter(Node):
 
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
-        self.robot_pose = Pose()
-
+        best_particle = max(self.particle_cloud, key=lambda p: p.w)
+        self.robot_pose = self.transform_helper.convert_translation_rotation_to_pose(translation=[best_particle.x, best_particle.y, 0.0], rotation=quaternion_from_euler(yaw=best_particle.theta))
         self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                         self.odom_pose)
 
@@ -239,35 +243,33 @@ class ParticleFilter(Node):
             particle is selected in the resampling step.  You may want to make use of the given helper
             function draw_random_sample in helper_functions.py.
         """
-        cap = 0.5
-        weights_list = []
 
         # make sure the distribution is normalized
         self.normalize_particles()
         # TODO: fill out the rest of the implementation
-        # pop particles under a certain weight and redistribute around a value
-        self.particle_cloud = [particle for particle in self.particle_cloud if particle.w > cap]
+        
+        self.particle_cloud = draw_random_sample(self.particle_cloud, [particle.w for particle in self.particle_cloud], self.n_particles)
         for particle in self.particle_cloud:
-            weights_list.append(particle.self.w)
-        while len(self.particle_cloud) < self.n_particles:
-            self.particle_cloud.append(draw_random_sample(self.particle_cloud,weights_list,1))
+            particle.add_noise()
+        self.normalize_particles()
 
     def update_particles_with_laser(self, r, theta):
         """ Updates the particle weights in response to the scan data
             r: the distance readings to obstacles
             theta: the angle relative to the robot frame for each corresponding reading 
         """
-        pass
-        # for particle in self.particle_cloud:
-        #     error = 0
-        #     count = 0
-        #     for index, distance in enumerate(r):
-        #         map_point = transform_scan_point_to_map(particle, distance, theta[index])[0:2]
-        #         curr_error = self.occupancy_field.get_closest_obstacle_distance(map_point[0], map_point[1])
-        #         if curr_error >= 0.0:
-        #             count += 1
-        #             error += curr_error
-        #     particle.update_weight(count/error)
+        for particle in self.particle_cloud:
+            error = 0
+            count = 0
+            for index, distance in enumerate(r):
+                map_point = transform_scan_point_to_map(particle, distance, theta[index])[0:2]
+                curr_error = self.occupancy_field.get_closest_obstacle_distance(map_point[0], map_point[1])
+                if curr_error >= 0.0:
+                    count += 1
+                    error += curr_error
+            if error == 0:
+                return
+            particle.update_weight(count/error)
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -285,8 +287,7 @@ class ParticleFilter(Node):
         self.particle_cloud = []
 
         for _ in range(self.n_particles):
-            # noisy_pos = xy_theta + np.random.normal(0.0, 1.0, 3)
-            noisy_pos = xy_theta
+            noisy_pos = xy_theta + np.random.normal(0.0, 1, 3)
             self.particle_cloud.append(Particle(x=noisy_pos[0], y=noisy_pos[1], w=1.0, theta=noisy_pos[2]))
         self.normalize_particles()
 
