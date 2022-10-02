@@ -14,6 +14,8 @@ Panels:
         - /LaserScan1
         - /PoseArray1
         - /PoseArray1/Topic1
+        - /PoseArray2
+        - /PoseArray2/Topic1
       Splitter Ratio: 0.5
     Tree Height: 787
   - Class: rviz_common/Selection
@@ -206,6 +208,26 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /particlecloud
       Value: true
+    - Alpha: 1
+      Arrow Length: 0.30000001192092896
+      Axes Length: 0.30000001192092896
+      Axes Radius: 0.009999999776482582
+      Class: rviz_default_plugins/PoseArray
+      Color: 255; 50; 255
+      Enabled: true
+      Head Length: 0.07000000029802322
+      Head Radius: 0.029999999329447746
+      Name: PoseArray
+      Shaft Length: 0.23000000417232513
+      Shaft Radius: 0.009999999776482582
+      Shape: Arrow (Flat)
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /simulate_laser_scan
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -249,7 +271,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 10.422015190124512
+      Distance: 13.514517784118652
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -264,10 +286,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7153981924057007
+      Pitch: 0.6703982353210449
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 6.168581962585449
+      Yaw: 5.388576507568359
     Saved: ~
 Window Geometry:
   Displays:

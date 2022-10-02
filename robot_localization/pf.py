@@ -2,13 +2,17 @@
 
 """ This is the starter code for the robot localization project """
 
+import pdb
+from typing import List
 import rclpy
 from threading import Thread
 from rclpy.time import Time
 from rclpy.node import Node
-from std_msgs.msg import Header
+from std_msgs.msg import Header, ColorRGBA
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion, Vector3
+from visualization_msgs.msg import MarkerArray, Marker
+from builtin_interfaces.msg import Duration as Dur
 from rclpy.duration import Duration
 import math
 import time
@@ -17,6 +21,9 @@ from occupancy_field import OccupancyField
 from helper_functions import TFHelper, draw_random_sample
 from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
+
+def transform_scan_point_to_map(particle, r, theta):
+    return np.linalg.inv(particle.homogeneous_pose)@np.array([r*np.cos(theta), r*np.sin(theta), 1])
 
 class Particle(object):
     """ Represents a hypothesis (particle) of the robot's pose consisting of x,y and theta (yaw)
@@ -44,11 +51,17 @@ class Particle(object):
         return Pose(position=Point(x=self.x, y=self.y, z=0.0),
                     orientation=Quaternion(x=q[0], y=q[1], z=q[2], w=q[3]))
 
-    # TODO: define additional helper functions if needed
     def update_position(self, delta1, delta2, delta3):
         self.x = self.x + delta1
         self.y = self.y + delta2
         self.theta = self.theta + delta3
+        
+    def update_weight(self, new_w):
+        self.w = new_w
+
+    @property
+    def homogeneous_pose(self):
+        return np.array([[np.cos(self.theta), -np.sin(self.theta), self.x], [np.sin(self.theta), np.cos(self.theta), self.y], [0, 0, 1]])
 
 class ParticleFilter(Node):
     """ The class that represents a Particle Filter ROS Node
@@ -78,8 +91,8 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
         self.scan_topic = "scan"        # the topic where we will get laser scans from 
 
-        self.n_particles = 300          # the number of particles to use
-
+        # self.n_particles = 300          # the number of particles to use
+        self.n_particles = 1
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
 
@@ -91,6 +104,8 @@ class ParticleFilter(Node):
         # publish the current particle cloud.  This enables viewing particles in rviz.
         self.particle_pub = self.create_publisher(PoseArray, "particlecloud", qos_profile_sensor_data)
 
+        self.test_pub = self.create_publisher(Marker, "simulate_laser_scan", qos_profile_sensor_data)
+
         # laser_subscriber listens for data from the lidar
         self.create_subscription(LaserScan, self.scan_topic, self.scan_received, 10)
 
@@ -101,7 +116,7 @@ class ParticleFilter(Node):
         # this is the current scan that our run_loop should process
         self.scan_to_process = None
         # your particle cloud will go here
-        self.particle_cloud = []
+        self.particle_cloud: List[Particle] = []
 
         self.current_odom_xy_theta = []
         self.occupancy_field = OccupancyField(self)
@@ -149,13 +164,13 @@ class ParticleFilter(Node):
             return
         
         (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.base_frame)
-        print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
+        # print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
         # clear the current scan so that we can process the next one
         self.scan_to_process = None
 
         self.odom_pose = new_pose
         new_odom_xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
-        print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
+        # print("x: {0}, y: {1}, yaw: {2}".format(*new_odom_xy_theta))
 
         if not self.current_odom_xy_theta:
             self.current_odom_xy_theta = new_odom_xy_theta
@@ -242,9 +257,17 @@ class ParticleFilter(Node):
             r: the distance readings to obstacles
             theta: the angle relative to the robot frame for each corresponding reading 
         """
-        # TODO: implement this
-        # like paul did in class, take each point and find its closest obstacle (should be 0) and that becomes the inverse weight (error term)
         pass
+        # for particle in self.particle_cloud:
+        #     error = 0
+        #     count = 0
+        #     for index, distance in enumerate(r):
+        #         map_point = transform_scan_point_to_map(particle, distance, theta[index])[0:2]
+        #         curr_error = self.occupancy_field.get_closest_obstacle_distance(map_point[0], map_point[1])
+        #         if curr_error >= 0.0:
+        #             count += 1
+        #             error += curr_error
+        #     particle.update_weight(count/error)
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -262,14 +285,16 @@ class ParticleFilter(Node):
         self.particle_cloud = []
 
         for _ in range(self.n_particles):
-            noisy_pos = xy_theta + np.random.normal(0.0, 1.0, 3)
+            # noisy_pos = xy_theta + np.random.normal(0.0, 1.0, 3)
+            noisy_pos = xy_theta
             self.particle_cloud.append(Particle(x=noisy_pos[0], y=noisy_pos[1], w=1.0, theta=noisy_pos[2]))
         self.normalize_particles()
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
-        # TODO: implement this
-        pass
+        weight_total = sum([particle.w for particle in self.particle_cloud])
+        for particle in self.particle_cloud:
+            particle.update_weight(particle.w/weight_total)
 
     def publish_particles(self, timestamp):
         particles_conv = []
