@@ -93,8 +93,11 @@ class OccupancyField(object):
             x_coord = x_coord.astype(np.int)
             y_coord = y_coord.astype(np.int)
         else:
-            x_coord = int(x_coord)
-            y_coord = int(y_coord)
+            try:
+                x_coord = int(x_coord)
+                y_coord = int(y_coord)
+            except:
+                return 10.0
 
         is_valid = (x_coord >= 0) & (y_coord >= 0) & (x_coord < self.map.info.width) & (y_coord < self.map.info.height)
         if type(x) is np.ndarray:
@@ -102,4 +105,4 @@ class OccupancyField(object):
             distances[is_valid] = self.closest_occ[x_coord[is_valid], y_coord[is_valid]]
             return distances
         else:
-            return self.closest_occ[x_coord, y_coord] if is_valid else float('nan')
+            return self.closest_occ[x_coord, y_coord] if is_valid else 10.0
