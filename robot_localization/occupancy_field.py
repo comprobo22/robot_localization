@@ -127,4 +127,4 @@ class OccupancyField(object):
         for x, y in laser_scan.T:
             dist += self.get_closest_obstacle_distance(x, y)
         # Return the average distance for the entire laser scan
-        return dist/len(laser_scan)
+        return dist / len(laser_scan)

@@ -73,15 +73,20 @@ class Particle(object):
 
     def transform_scan_point_to_map(self, r, theta):
         return (
-            self.homogeneous_pose
-            @ np.array([r * np.cos(theta), r * np.sin(theta), 1])
+            self.homogeneous_pose @ np.array([r * np.cos(theta), r * np.sin(theta), 1])
         )[0:2]
 
     def transform_scan_to_map(self, r, theta):
         return (
             self.homogeneous_pose
-            @ np.array([np.multiply(r, np.cos(theta)), np.multiply(r, np.sin(theta)), np.ones(len(r))])
-        )[0:2,:]
+            @ np.array(
+                [
+                    np.multiply(r, np.cos(theta)),
+                    np.multiply(r, np.sin(theta)),
+                    np.ones(len(r)),
+                ]
+            )
+        )[0:2, :]
 
     @property
     def homogeneous_pose(self):
@@ -312,7 +317,7 @@ class ParticleFilter(Node):
             # Compute the average distance to nearby obstacles for the laser scan
             avg_dist = self.occupancy_field.get_avg_distance(laser_scan_map_frame)
             # Update the particle's weight based on the inverse average distance
-            particle.update_weight(1/avg_dist)
+            particle.update_weight(1 / avg_dist)
 
     def update_initial_pose(self, msg):
         """Callback function to handle re-initializing the particle filter based on a pose estimate.
