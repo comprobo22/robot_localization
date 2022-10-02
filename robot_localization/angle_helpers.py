@@ -22,7 +22,7 @@ def euler_from_quaternion(x, y, z, w):
      
     return roll_x, pitch_y, yaw_z # in radians
 
-def quaternion_from_euler(roll, pitch, yaw):
+def quaternion_from_euler(roll=0, pitch=0, yaw=0):
     """
     Converts euler roll, pitch, yaw to quaternion (w in last place)
     quat = [x, y, z, w]
