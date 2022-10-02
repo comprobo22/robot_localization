@@ -14,7 +14,7 @@ import math
 import time
 import numpy as np
 from occupancy_field import OccupancyField
-from helper_functions import TFHelper
+from helper_functions import TFHelper, draw_random_sample
 from rclpy.qos import qos_profile_sensor_data
 from angle_helpers import quaternion_from_euler
 
@@ -45,6 +45,10 @@ class Particle(object):
                     orientation=Quaternion(x=q[0], y=q[1], z=q[2], w=q[3]))
 
     # TODO: define additional helper functions if needed
+    def update_position(self, delta1, delta2, delta3):
+        self.x = self.x + delta1
+        self.y = self.y + delta2
+        self.theta = self.theta + delta3
 
 class ParticleFilter(Node):
     """ The class that represents a Particle Filter ROS Node
@@ -189,6 +193,7 @@ class ParticleFilter(Node):
         self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                         self.odom_pose)
 
+
     def update_particles_with_odom(self):
         """ Update the particles using the newly given odometry pose.
             The function computes the value delta which is a tuple (x,y,theta)
@@ -210,6 +215,8 @@ class ParticleFilter(Node):
         
         # TODO: modify particles using delta
         # lol just apply the delta transform to each of the particles
+        for particle in self.particle_cloud:
+            particle.update_position(delta[0],delta[1],delta[2])
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
@@ -217,10 +224,18 @@ class ParticleFilter(Node):
             particle is selected in the resampling step.  You may want to make use of the given helper
             function draw_random_sample in helper_functions.py.
         """
+        cap = 0.5
+        weights_list = []
+
         # make sure the distribution is normalized
         self.normalize_particles()
         # TODO: fill out the rest of the implementation
         # pop particles under a certain weight and redistribute around a value
+        self.particle_cloud = [particle for particle in self.particle_cloud if particle.w > cap]
+        for particle in self.particle_cloud:
+            weights_list.append(particle.self.w)
+        while len(self.particle_cloud) < self.n_particles:
+            self.particle_cloud.append(draw_random_sample(self.particle_cloud,weights_list,1))
 
     def update_particles_with_laser(self, r, theta):
         """ Updates the particle weights in response to the scan data
