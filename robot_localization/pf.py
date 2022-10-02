@@ -8,7 +8,7 @@ import rclpy
 from threading import Thread
 from rclpy.time import Time
 from rclpy.node import Node
-from std_msgs.msg import Header, ColorRGBA
+from std_msgs.msg import Header
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import (
     PoseWithCovarianceStamped,
@@ -16,10 +16,7 @@ from geometry_msgs.msg import (
     Pose,
     Point,
     Quaternion,
-    Vector3,
 )
-from visualization_msgs.msg import MarkerArray, Marker
-from builtin_interfaces.msg import Duration as Dur
 from rclpy.duration import Duration
 import math
 import time
@@ -77,8 +74,14 @@ class Particle(object):
     def transform_scan_point_to_map(self, r, theta):
         return (
             self.homogeneous_pose
-            @ np.array([r * np.cos(theta), r * np.sin(theta), 1])[0:2]
-        )
+            @ np.array([r * np.cos(theta), r * np.sin(theta), 1])
+        )[0:2]
+
+    def transform_scan_to_map(self, r, theta):
+        return (
+            self.homogeneous_pose
+            @ np.array([np.multiply(r, np.cos(theta)), np.multiply(r, np.sin(theta)), np.ones(len(r))])
+        )[0:2,:]
 
     @property
     def homogeneous_pose(self):
@@ -304,19 +307,12 @@ class ParticleFilter(Node):
         theta: the angle relative to the robot frame for each corresponding reading
         """
         for particle in self.particle_cloud:
-            error = 0
-            count = 0
-            for index, distance in enumerate(r):
-                map_point = particle.transform_scan_point_to_map(distance, theta[index])
-                curr_error = self.occupancy_field.get_closest_obstacle_distance(
-                    map_point[0], map_point[1]
-                )
-                if curr_error >= 0.0:
-                    count += 1
-                    error += curr_error
-            if error == 0:
-                return
-            particle.update_weight(count / error)
+            # Project the laser scan onto each particle
+            laser_scan_map_frame = particle.transform_scan_to_map(r, theta)
+            # Compute the average distance to nearby obstacles for the laser scan
+            avg_dist = self.occupancy_field.get_avg_distance(laser_scan_map_frame)
+            # Update the particle's weight based on the inverse average distance
+            particle.update_weight(1/avg_dist)
 
     def update_initial_pose(self, msg):
         """Callback function to handle re-initializing the particle filter based on a pose estimate.

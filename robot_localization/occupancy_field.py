@@ -120,3 +120,11 @@ class OccupancyField(object):
             return distances
         else:
             return self.closest_occ[x_coord, y_coord] if is_valid else 10.0
+
+    def get_avg_distance(self, laser_scan):
+        dist = 0
+        # Compute the dist for each x, y point in the laser scan
+        for x, y in laser_scan.T:
+            dist += self.get_closest_obstacle_distance(x, y)
+        # Return the average distance for the entire laser scan
+        return dist/len(laser_scan)
