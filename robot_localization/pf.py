@@ -79,6 +79,8 @@ class ParticleFilter(Node):
         self.d_thresh = 0.2             # the amount of linear movement before performing an update
         self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
 
+        self.num_particles = 50         # the amount of particles to initilize the particle filter with
+
         # TODO: define additional constants if needed
 
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
@@ -244,7 +246,14 @@ class ParticleFilter(Node):
         if xy_theta is None:
             xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(self.odom_pose)
         self.particle_cloud = []
-        # TODO create particles
+
+        for _ in range(self.num_particles):
+            new_x = np.random.normal(xy_theta[0], 2)
+            new_y = np.random.normal(xy_theta[1], 2)
+            new_theta = np.random.normal(xy_theta[2], 1)
+            new_particle = Particle(new_x, new_y, new_theta)
+
+            self.particle_cloud.append(new_particle)
 
         self.normalize_particles()
 
