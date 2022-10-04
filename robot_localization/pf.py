@@ -201,16 +201,25 @@ class ParticleFilter(Node):
         # compute the change in x,y,theta since our last update
         if self.current_odom_xy_theta:
             old_odom_xy_theta = self.current_odom_xy_theta
-            delta = (new_odom_xy_theta[0] - self.current_odom_xy_theta[0],
-                     new_odom_xy_theta[1] - self.current_odom_xy_theta[1],
-                     new_odom_xy_theta[2] - self.current_odom_xy_theta[2])
+            delta = (new_odom_xy_theta[0] - old_odom_xy_theta[0],
+                     new_odom_xy_theta[1] - old_odom_xy_theta[1],
+                     new_odom_xy_theta[2] - old_odom_xy_theta[2])
 
             self.current_odom_xy_theta = new_odom_xy_theta
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
+        #convert delta, to the robots movement 
+            #turn by phi
+                #atan2(deltay, deltax) - atan2(oldy, oldx)
+            #drive d
+                #pythagorean theorem 
+            #turn by theta 
+                #delta t - theta
+        #loop through each particle 
+        #move the particle by the movement in its own robot relative frame 
 
-        # TODO: modify particles using delta
+        
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
@@ -246,9 +255,9 @@ class ParticleFilter(Node):
         self.particle_cloud = []
 
         for _ in range(self.num_particles):
-            new_x = np.random.normal(xy_theta[0], 2)
-            new_y = np.random.normal(xy_theta[1], 2)
-            new_theta = np.random.normal(xy_theta[2], np.pi)
+            new_x = np.random.normal(xy_theta[0], 1)
+            new_y = np.random.normal(xy_theta[1], 1)
+            new_theta = np.random.normal(xy_theta[2], np.pi/3)
             new_particle = Particle(new_x, new_y, new_theta)
 
             self.particle_cloud.append(new_particle)
