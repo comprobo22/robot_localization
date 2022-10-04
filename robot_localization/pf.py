@@ -248,7 +248,7 @@ class ParticleFilter(Node):
         for _ in range(self.num_particles):
             new_x = np.random.normal(xy_theta[0], 2)
             new_y = np.random.normal(xy_theta[1], 2)
-            new_theta = np.random.normal(xy_theta[2], 1)
+            new_theta = np.random.normal(xy_theta[2], np.pi)
             new_particle = Particle(new_x, new_y, new_theta)
 
             self.particle_cloud.append(new_particle)
