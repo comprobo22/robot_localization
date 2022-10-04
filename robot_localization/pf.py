@@ -257,8 +257,10 @@ class ParticleFilter(Node):
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
-        # TODO: implement this
-        pass
+        total_weight = sum([particle.w for particle in self.particle_cloud])
+        for particle in self.particle_cloud:
+            particle.w = particle.w/total_weight
+
 
     def publish_particles(self, timestamp):
         particles_conv = []
