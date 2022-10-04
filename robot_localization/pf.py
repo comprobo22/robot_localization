@@ -2,7 +2,6 @@
 
 """ This is the starter code for the robot localization project """
 
-import pdb
 from typing import List
 import rclpy
 from threading import Thread
@@ -135,9 +134,9 @@ class ParticleFilter(Node):
         )  # the amount of angular movement before performing an update
 
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
-        self.create_subscription(
-            PoseWithCovarianceStamped, "initialpose", self.update_initial_pose, 10
-        )
+        # self.create_subscription(
+        #     PoseWithCovarianceStamped, "initialpose", self.update_initial_pose, 10
+        # )
 
         # publish the current particle cloud.  This enables viewing particles in rviz.
         self.particle_pub = self.create_publisher(
@@ -221,7 +220,7 @@ class ParticleFilter(Node):
             self.current_odom_xy_theta = new_odom_xy_theta
         elif not self.particle_cloud:
             # now that we have all of the necessary transforms we can update the particle cloud
-            self.initialize_particle_cloud(msg.header.stamp)
+            self.initialize_particle_cloud()
         elif self.moved_far_enough_to_update(new_odom_xy_theta):
             # we have moved far enough to do an update!
             self.update_particles_with_odom()  # update based on odometry
@@ -325,21 +324,15 @@ class ParticleFilter(Node):
         xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(msg.pose.pose)
         self.initialize_particle_cloud(msg.header.stamp, xy_theta)
 
-    def initialize_particle_cloud(self, timestamp, xy_theta=None):
-        """Initialize the particle cloud.
-        Arguments
-        xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
-                  particle cloud around.  If this input is omitted, the odometry will be used"""
-        if xy_theta is None:
-            xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(
-                self.odom_pose
-            )
-        self.particle_cloud = []
-
+    def initialize_particle_cloud(self):
+        """Initialize the particle cloud."""
+        map_bounds = self.occupancy_field.get_obstacle_bounding_box()
         for _ in range(self.n_particles):
-            noisy_pos = xy_theta + np.random.normal(0.0, 1, 3)
+            rand_x = np.random.uniform(low=map_bounds[0][0], high=map_bounds[0][1], size=(1))[0]
+            rand_y = np.random.uniform(low=map_bounds[1][0], high=map_bounds[1][1], size=(1))[0]
+            rand_theta = np.random.uniform(low=0, high=2*np.pi, size=(1))[0]
             self.particle_cloud.append(
-                Particle(x=noisy_pos[0], y=noisy_pos[1], w=1.0, theta=noisy_pos[2])
+                Particle(x=rand_x, y=rand_y, w=1.0, theta=rand_theta)
             )
         self.normalize_particles()
 
