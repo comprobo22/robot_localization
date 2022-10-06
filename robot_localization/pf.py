@@ -2,6 +2,7 @@
 
 """ This is the starter code for the robot localization project """
 
+from this import d
 import rclpy
 from threading import Thread
 from rclpy.time import Time
@@ -210,15 +211,23 @@ class ParticleFilter(Node):
             self.current_odom_xy_theta = new_odom_xy_theta
             return
         #convert delta, to the robots movement 
-            #turn by phi
-                #atan2(deltay, deltax) - atan2(oldy, oldx)
-            #drive d
-                #pythagorean theorem 
-            #turn by theta 
-                #delta t - theta
+        #turn by phi
+        phi = np.arctan2(delta[1], delta[0]) - old_odom_xy_theta[2]
+        #drive d
+        d = math.sqrt(delta[0]**2 + delta[1]**2)
+        #turn by theta 
+        theta = new_odom_xy_theta[2] - np.arctan2(delta[1], delta[0])
+        
         #loop through each particle 
         #move the particle by the movement in its own robot relative frame 
-
+        for particle in self.particle_cloud:
+            # make the particle head towards its new position
+            particle.theta += phi
+            # make it move the proper amount in the x and y position
+            particle.x += d*math.cos(particle.theta)
+            particle.y += d*math.sin(particle.theta)
+            # move the particle the rest of the way
+            particle.theta += theta
         
 
     def resample_particles(self):
@@ -236,8 +245,26 @@ class ParticleFilter(Node):
             r: the distance readings to obstacles
             theta: the angle relative to the robot frame for each corresponding reading 
         """
-        # TODO: implement this
-        pass
+        #loop through particles
+        for particle in self.particle_cloud:
+            #update theta with the particles heading to put theta in world frame
+            for angle in range(len(theta)):
+                theta[angle] += particle.theta
+            #initialize x and y coordinate list for the obstacles
+            x_coords = []
+            y_coords = []
+            #find the x and y coordinate of each obstacle relative to the particle
+            for idx in range(len(r)):
+                x_coords.append(particle.x + r[idx]*math.cos(particle.theta))
+                y_coords.append(particle.y + r[idx]*math.sin(particle.theta))
+            #initialize occupancy list
+            distance_to_obstacle = []
+            #put points through occupancy field
+            for point in range(len(x_coords)):
+                distance_to_obstacle.append(OccupancyField.get_closest_obstacle_distance(x_coords[point], y_coords[point]))
+            #weight the particle
+            particle.w = 1/ (math.mean(distance_to_obstacle)+1)
+
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -261,6 +288,8 @@ class ParticleFilter(Node):
             new_particle = Particle(new_x, new_y, new_theta)
 
             self.particle_cloud.append(new_particle)
+
+        
 
         self.normalize_particles()
 
