@@ -39,6 +39,7 @@ class Particle(object):
         self.x = x
         self.y = y
 
+
     def as_pose(self):
         """ A helper function to convert a particle to a geometry_msgs/Pose message """
         q = quaternion_from_euler(0, 0, self.theta)
@@ -82,6 +83,10 @@ class ParticleFilter(Node):
 
         self.num_particles = 50         # the amount of particles to initilize the particle filter with
 
+        # create variables to store the normalized x, y, and theta
+        self.norm_x = None
+        self.norm_y = None
+        self.norm_theta = None
         # TODO: define additional constants if needed
 
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
@@ -130,7 +135,7 @@ class ParticleFilter(Node):
         """ This is the main run_loop of our particle filter.  It checks to see if
             any scans are ready and to be processed and will call several helper
             functions to complete the processing.
-            
+
             You do not need to modify this function, but it is helpful to understand it.
         """
         if self.scan_to_process is None:
@@ -146,7 +151,7 @@ class ParticleFilter(Node):
                 # we will never get this transform, since it is before our oldest one
                 self.scan_to_process = None
             return
-        
+
         (r, theta) = self.transform_helper.convert_scan_to_polar_in_robot_frame(msg, self.base_frame)
         print("r[0]={0}, theta[0]={1}".format(r[0], theta[0]))
         # clear the current scan so that we can process the next one
@@ -185,12 +190,22 @@ class ParticleFilter(Node):
         # first make sure that the particle weights are normalized
         self.normalize_particles()
 
-        # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
 
         self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                         self.odom_pose)
+
+        # add x, y, and theta of each particle together multiplied by their normalized
+
+        for particle in self.particle_cloud:
+            self.norm_x += particle.x * particle.w
+            self.norm_y += particle.y * particle.w
+            self.norm_theta += particle.theta *particle.w
+
+        self.robot_pose.position = Point(self.norm_x, self.norm_y, 0)
+        self.robot_pose.orientation = Quaternion(quaternion_from_euler(0,0, self.norm_theta))
+
 
     def update_particles_with_odom(self):
         """ Update the particles using the newly given odometry pose.
@@ -239,11 +254,13 @@ class ParticleFilter(Node):
         # make sure the distribution is normalized
         self.normalize_particles()
         # TODO: fill out the rest of the implementation
+        # find the particle with the highest weight and resample around that point
+        self.initialize_particle_cloud(xy_theta=[self.norm_x, self.norm_y, self.norm_theta])
 
     def update_particles_with_laser(self, r, theta):
         """ Updates the particle weights in response to the scan data
             r: the distance readings to obstacles
-            theta: the angle relative to the robot frame for each corresponding reading 
+            theta: the angle relative to the robot frame for each corresponding reading
         """
         #loop through particles
         for particle in self.particle_cloud:
@@ -258,7 +275,10 @@ class ParticleFilter(Node):
                 x_coords.append(particle.x + r[idx]*math.cos(particle.theta))
                 y_coords.append(particle.y + r[idx]*math.sin(particle.theta))
             #initialize occupancy list
-            distance_to_obstacle = (OccupancyField.get_closest_obstacle_distance(x_coords, y_coords))
+            distance_to_obstacle = []
+            #put points through occupancy field
+            for point in range(len(x_coords)):
+                distance_to_obstacle.append(OccupancyField.get_closest_obstacle_distance(x_coords[point], y_coords[point]))
             #weight the particle
             particle.w = 1/ (math.mean(distance_to_obstacle)+1)
 
@@ -286,7 +306,7 @@ class ParticleFilter(Node):
 
             self.particle_cloud.append(new_particle)
 
-        
+
 
         self.normalize_particles()
 
