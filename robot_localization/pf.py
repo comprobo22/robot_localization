@@ -73,7 +73,7 @@ class ParticleFilter(Node):
         self.base_frame = "base_footprint"   # the frame of the robot base
         self.map_frame = "map"          # the name of the map coordinate frame
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
-        self.scan_topic = "scan"        # the topic where we will get laser scans from 
+        self.scan_topic = "scan"        # the topic where we will get laser scans from
 
         self.n_particles = 300          # the number of particles to use
 
@@ -210,16 +210,16 @@ class ParticleFilter(Node):
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
-        #convert delta, to the robots movement 
+        #convert delta, to the robots movement
         #turn by phi
         phi = np.arctan2(delta[1], delta[0]) - old_odom_xy_theta[2]
         #drive d
         d = math.sqrt(delta[0]**2 + delta[1]**2)
-        #turn by theta 
+        #turn by theta
         theta = new_odom_xy_theta[2] - np.arctan2(delta[1], delta[0])
-        
-        #loop through each particle 
-        #move the particle by the movement in its own robot relative frame 
+
+        #loop through each particle
+        #move the particle by the movement in its own robot relative frame
         for particle in self.particle_cloud:
             # make the particle head towards its new position
             particle.theta += phi
@@ -228,7 +228,7 @@ class ParticleFilter(Node):
             particle.y += d*math.sin(particle.theta)
             # move the particle the rest of the way
             particle.theta += theta
-        
+
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
