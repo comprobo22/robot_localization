@@ -35,7 +35,7 @@ class Particle(object):
         w: the particle weight (the class does not ensure that particle weights are normalized
     """
 
-    ANGLE_NOISE = 0.1
+    ANGLE_NOISE = 0.05
     ODOM_NOISE = 0.05
 
     def __init__(self, x=0.0, y=0.0, theta=0.0, w=1.0):
@@ -57,10 +57,19 @@ class Particle(object):
             orientation=Quaternion(x=q[0], y=q[1], z=q[2], w=q[3]),
         )
 
-    def update_position(self, delta):
-        self.x = self.x + delta[0]
-        self.y = self.y + delta[1]
-        self.theta = self.theta + delta[2]
+    def update_position(self, delta, delta_angle):
+        # map_delta = np.array([delta[0], delta[1]])
+        # p_heading = np.array([[np.cos(self.theta), -np.sin(self.theta)], [np.sin(self.theta), np.cos(self.theta)]])
+        # particle_delta = p_heading@map_delta
+        # print(map_delta)
+        # print(self.theta)
+        particle_delta = self.homogeneous_pose@delta
+        # print(particle_delta)
+        # print(delta)
+        self.x = particle_delta[0][2]
+        self.y = particle_delta[1][2]
+        # fix angle
+        self.theta += delta_angle
 
     def add_noise(self):
         self.x += np.random.normal(0, self.ODOM_NOISE)
@@ -127,7 +136,7 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"  # the name of the odometry coordinate frame
         self.scan_topic = "scan"  # the topic where we will get laser scans from
 
-        self.n_particles = 300  # the number of particles to use
+        self.n_particles = 800  # the number of particles to use
         self.d_thresh = 0.2  # the amount of linear movement before performing an update
         self.a_thresh = (
             math.pi / 6
@@ -268,19 +277,15 @@ class ParticleFilter(Node):
         )
         # compute the change in x,y,theta since our last update
         if self.current_odom_xy_theta:
-            delta = (
-                new_odom_xy_theta[0] - self.current_odom_xy_theta[0],
-                new_odom_xy_theta[1] - self.current_odom_xy_theta[1],
-                new_odom_xy_theta[2] - self.current_odom_xy_theta[2],
-            )
-
+            delta = np.linalg.inv([[np.cos(self.current_odom_xy_theta[2]), -np.sin(self.current_odom_xy_theta[2]), self.current_odom_xy_theta[0]], [np.sin(self.current_odom_xy_theta[2]), np.cos(self.current_odom_xy_theta[2]), self.current_odom_xy_theta[1]], [0, 0, 1]])@[[np.cos(new_odom_xy_theta[2]), -np.sin(new_odom_xy_theta[2]), new_odom_xy_theta[0]], [np.sin(new_odom_xy_theta[2]), np.cos(new_odom_xy_theta[2]), new_odom_xy_theta[1]], [0, 0, 1]]
+            delta_angle = new_odom_xy_theta[2] - self.current_odom_xy_theta[2]
             self.current_odom_xy_theta = new_odom_xy_theta
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
         for particle in self.particle_cloud:
-            particle.update_position(delta)
+            particle.update_position(delta, delta_angle)
 
     def resample_particles(self):
         """Resample the particles according to the new particle weights.
@@ -316,7 +321,7 @@ class ParticleFilter(Node):
             # Compute the average distance to nearby obstacles for the laser scan
             avg_dist = self.occupancy_field.get_avg_distance(laser_scan_map_frame)
             # Update the particle's weight based on the inverse average distance
-            particle.update_weight(1 / avg_dist)
+            particle.update_weight(1 / avg_dist**2)
 
     def update_initial_pose(self, msg):
         """Callback function to handle re-initializing the particle filter based on a pose estimate.
