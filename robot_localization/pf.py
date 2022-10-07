@@ -258,10 +258,7 @@ class ParticleFilter(Node):
                 x_coords.append(particle.x + r[idx]*math.cos(particle.theta))
                 y_coords.append(particle.y + r[idx]*math.sin(particle.theta))
             #initialize occupancy list
-            distance_to_obstacle = []
-            #put points through occupancy field
-            for point in range(len(x_coords)):
-                distance_to_obstacle.append(OccupancyField.get_closest_obstacle_distance(x_coords[point], y_coords[point]))
+            distance_to_obstacle = (OccupancyField.get_closest_obstacle_distance(x_coords, y_coords))
             #weight the particle
             particle.w = 1/ (math.mean(distance_to_obstacle)+1)
 
