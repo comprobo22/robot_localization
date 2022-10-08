@@ -1,0 +1,7 @@
+image: mac_merged.pgm
+mode: trinary
+resolution: 0.03
+origin: [-9.7, -83, 0]
+negate: 0
+occupied_thresh: 0.9
+free_thresh: 0.1
