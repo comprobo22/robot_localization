@@ -2,6 +2,7 @@
 
 """ This is the starter code for the robot localization project """
 
+import pdb
 from typing import List
 import rclpy
 from threading import Thread
@@ -232,10 +233,19 @@ class ParticleFilter(Node):
             self.initialize_particle_cloud()
         elif self.moved_far_enough_to_update(new_odom_xy_theta):
             # we have moved far enough to do an update!
+            t1 = time.perf_counter()
             self.update_particles_with_odom()  # update based on odometry
+            t2 = time.perf_counter()
             self.update_particles_with_laser(r, theta)  # update based on laser scan
+            t3 = time.perf_counter()
             self.update_robot_pose()  # update robot's pose based on particles
+            t4 = time.perf_counter()
             self.resample_particles()  # resample particles to focus on areas of high density
+            t5 = time.perf_counter()
+            print(f'1: {t2-t1}')
+            print(f'2: {t3-t2}')
+            print(f'3: {t4-t3}')
+            print(f'4: {t5-t4}')
         # publish particles (so things like rviz can see them)
         self.publish_particles(msg.header.stamp)
 
@@ -318,8 +328,9 @@ class ParticleFilter(Node):
         for particle in self.particle_cloud:
             # Project the laser scan onto each particle
             laser_scan_map_frame = particle.transform_scan_to_map(r, theta)
+            print(np.shape(laser_scan_map_frame))
             # Compute the average distance to nearby obstacles for the laser scan
-            avg_dist = self.occupancy_field.get_avg_distance(laser_scan_map_frame)
+            avg_dist = self.occupancy_field.get_closest_obstacle_distance(laser_scan_map_frame)
             # Update the particle's weight based on the inverse average distance
             particle.update_weight(1 / avg_dist**2)
 
@@ -332,13 +343,14 @@ class ParticleFilter(Node):
     def initialize_particle_cloud(self):
         """Initialize the particle cloud."""
         map_bounds = self.occupancy_field.get_obstacle_bounding_box()
-        for _ in range(self.n_particles):
+        while len(self.particle_cloud) < self.n_particles:
             rand_x = np.random.uniform(low=map_bounds[0][0], high=map_bounds[0][1], size=(1))[0]
             rand_y = np.random.uniform(low=map_bounds[1][0], high=map_bounds[1][1], size=(1))[0]
             rand_theta = np.random.uniform(low=0, high=2*np.pi, size=(1))[0]
-            self.particle_cloud.append(
-                Particle(x=rand_x, y=rand_y, w=1.0, theta=rand_theta)
-            )
+            if not math.isnan(self.occupancy_field.get_closest_obstacle_distance(rand_x, rand_y)):
+                self.particle_cloud.append(
+                    Particle(x=rand_x, y=rand_y, w=1.0, theta=rand_theta)
+                )
         self.normalize_particles()
 
     def normalize_particles(self):
