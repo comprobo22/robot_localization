@@ -328,9 +328,8 @@ class ParticleFilter(Node):
         for particle in self.particle_cloud:
             # Project the laser scan onto each particle
             laser_scan_map_frame = particle.transform_scan_to_map(r, theta)
-            print(np.shape(laser_scan_map_frame))
             # Compute the average distance to nearby obstacles for the laser scan
-            avg_dist = self.occupancy_field.get_closest_obstacle_distance(laser_scan_map_frame)
+            avg_dist = np.nansum(self.occupancy_field.get_closest_obstacle_distance(laser_scan_map_frame[0,:], laser_scan_map_frame[1,:]))
             # Update the particle's weight based on the inverse average distance
             particle.update_weight(1 / avg_dist**2)
 

@@ -120,7 +120,7 @@ class OccupancyField(object):
             & (y_coord < self.map.info.height)
         )
         if type(x) is np.ndarray:
-            distances = np.float("nan") * np.ones(x_coord.shape)
+            distances = 10 * np.ones(x_coord.shape)
             distances[is_valid] = self.closest_occ[x_coord[is_valid], y_coord[is_valid]]
             return distances
         else:
