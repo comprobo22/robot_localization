@@ -287,8 +287,10 @@ class ParticleFilter(Node):
             y_coords = []
             #find the x and y coordinate of each obstacle relative to the particle
             for idx in range(len(r)):
-                x_coords.append(particle.x + r[idx]*math.cos(theta[idx]))
-                y_coords.append(particle.y + r[idx]*math.sin(theta[idx]))
+                # make sure that the laser scan did not return infinity
+                if not np.isinf(r[idx]) and not np.isnan(r[idx]):
+                    x_coords.append(particle.x + r[idx]*math.cos(theta[idx]))
+                    y_coords.append(particle.y + r[idx]*math.sin(theta[idx]))
             #initialize occupancy list
             distance_to_obstacle = []
             #put points through occupancy field
@@ -299,6 +301,9 @@ class ParticleFilter(Node):
             print(f"size of list {distance_to_obstacle}")
             print(f"weighted mean {np.nanmean(distance_to_obstacle)+1}")
             particle.w = 1/ (np.nanmean(distance_to_obstacle)+1)
+            if np.isnan(particle.w):
+                print(f"BROKEN AAAAAHHHHHH nan slipped through")
+
 
 
     def update_initial_pose(self, msg):
@@ -307,7 +312,7 @@ class ParticleFilter(Node):
         xy_theta = self.transform_helper.convert_pose_to_xy_and_theta(msg.pose.pose)
         self.initialize_particle_cloud(msg.header.stamp, xy_theta)
 
-    def initialize_particle_cloud(self, timestamp, xy_theta=None):
+    def initialize_particle_cloud(self, timestamp=None, xy_theta=None):
         """ Initialize the particle cloud.
             Arguments
             xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
@@ -330,9 +335,12 @@ class ParticleFilter(Node):
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
-        total_weight = sum([particle.w for particle in self.particle_cloud])
+        total_weight = np.nansum([particle.w for particle in self.particle_cloud])
         for particle in self.particle_cloud:
+            print(f"particle weight{particle.w}")
+            print(f"total weight {total_weight}")
             particle.w = particle.w/total_weight
+            print(f"Normalized weight: {particle.w}")
 
 
     def publish_particles(self, timestamp):
