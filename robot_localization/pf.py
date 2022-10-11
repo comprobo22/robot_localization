@@ -193,9 +193,6 @@ class ParticleFilter(Node):
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
 
-        self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
-                                                        self.odom_pose)
-
         # add x, y, and theta of each particle together multiplied by their normalized
 
         for particle in self.particle_cloud:
@@ -205,6 +202,9 @@ class ParticleFilter(Node):
 
         self.robot_pose.position = Point(self.norm_x, self.norm_y, 0)
         self.robot_pose.orientation = Quaternion(quaternion_from_euler(0,0, self.norm_theta))
+
+        self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
+                                                        self.odom_pose)
 
 
     def update_particles_with_odom(self):
@@ -272,15 +272,16 @@ class ParticleFilter(Node):
             y_coords = []
             #find the x and y coordinate of each obstacle relative to the particle
             for idx in range(len(r)):
-                x_coords.append(particle.x + r[idx]*math.cos(particle.theta))
-                y_coords.append(particle.y + r[idx]*math.sin(particle.theta))
+                x_coords.append(particle.x + r[idx]*math.cos(theta[idx]))
+                y_coords.append(particle.y + r[idx]*math.sin(theta[idx]))
             #initialize occupancy list
             distance_to_obstacle = []
             #put points through occupancy field
             for point in range(len(x_coords)):
-                distance_to_obstacle.append(OccupancyField.get_closest_obstacle_distance(x_coords[point], y_coords[point]))
+                print(f"x_coords: {x_coords[point]} y_coords: {y_coords[point]}")
+                distance_to_obstacle.append(self.occupancy_field.get_closest_obstacle_distance(x_coords[point], y_coords[point]))
             #weight the particle
-            particle.w = 1/ (math.mean(distance_to_obstacle)+1)
+            particle.w = 1/ (np.mean(distance_to_obstacle)+1)
 
 
     def update_initial_pose(self, msg):
