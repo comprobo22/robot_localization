@@ -84,9 +84,9 @@ class ParticleFilter(Node):
         self.num_particles = 50         # the amount of particles to initilize the particle filter with
 
         # create variables to store the normalized x, y, and theta
-        self.norm_x = None
-        self.norm_y = None
-        self.norm_theta = None
+        self.norm_x = 0
+        self.norm_y = 0
+        self.norm_theta = 0
         # TODO: define additional constants if needed
 
         # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
@@ -196,12 +196,27 @@ class ParticleFilter(Node):
         # add x, y, and theta of each particle together multiplied by their normalized
 
         for particle in self.particle_cloud:
+            print(f"norm_theta: {self.norm_theta}")
+            print(f"particle theta: {particle.theta}")
+            print(f"particle weight: {particle.w}")
             self.norm_x += particle.x * particle.w
             self.norm_y += particle.y * particle.w
-            self.norm_theta += particle.theta *particle.w
+            self.norm_theta += particle.theta * particle.w
 
-        self.robot_pose.position = Point(self.norm_x, self.norm_y, 0)
-        self.robot_pose.orientation = Quaternion(quaternion_from_euler(0,0, self.norm_theta))
+        self.robot_pose.position = Point()
+        self.robot_pose.orientation = Quaternion()
+
+        self.robot_pose.position.x = self.norm_x
+        self.robot_pose.position.y = self.norm_y
+        self.robot_pose.position.z = 0.0
+        print(self.norm_theta)
+        temp_quaternion = quaternion_from_euler(0,0, self.norm_theta)
+        print(temp_quaternion)
+        self.robot_pose.orientation.x = temp_quaternion[0]
+        self.robot_pose.orientation.y = temp_quaternion[1]
+        self.robot_pose.orientation.z = temp_quaternion[2]
+        self.robot_pose.orientation.w = temp_quaternion[3]
+
 
         self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
                                                         self.odom_pose)
@@ -281,7 +296,9 @@ class ParticleFilter(Node):
                 print(f"x_coords: {x_coords[point]} y_coords: {y_coords[point]}")
                 distance_to_obstacle.append(self.occupancy_field.get_closest_obstacle_distance(x_coords[point], y_coords[point]))
             #weight the particle
-            particle.w = 1/ (np.mean(distance_to_obstacle)+1)
+            print(f"size of list {distance_to_obstacle}")
+            print(f"weighted mean {np.nanmean(distance_to_obstacle)+1}")
+            particle.w = 1/ (np.nanmean(distance_to_obstacle)+1)
 
 
     def update_initial_pose(self, msg):
