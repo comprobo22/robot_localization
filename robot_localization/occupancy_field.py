@@ -1,8 +1,6 @@
 """ An implementation of an occupancy field that you can use to implement
     your particle filter """
 
-import math
-import pdb
 import rclpy
 from nav_msgs.srv import GetMap
 import numpy as np
@@ -69,10 +67,12 @@ class OccupancyField(object):
         curr = 0
         for i in range(self.map.info.width):
             for j in range(self.map.info.height):
-                if self.map.data[i+j*self.map.info.width] == -1:
-                    self.closest_occ[i, j] = float('nan')
+                if self.map.data[i + j * self.map.info.width] == -1:
+                    self.closest_occ[i, j] = float("nan")
                 else:
-                    self.closest_occ[i, j] = distances[curr][0] * self.map.info.resolution
+                    self.closest_occ[i, j] = (
+                        distances[curr][0] * self.map.info.resolution
+                    )
                 curr += 1
         self.occupied = occupied
         node.get_logger().info("occupancy field ready")
@@ -111,7 +111,7 @@ class OccupancyField(object):
                 x_coord = int(x_coord)
                 y_coord = int(y_coord)
             except:
-                return float('nan')
+                return float("nan")
 
         is_valid = (
             (x_coord >= 0)
@@ -124,16 +124,4 @@ class OccupancyField(object):
             distances[is_valid] = self.closest_occ[x_coord[is_valid], y_coord[is_valid]]
             return distances
         else:
-            return self.closest_occ[x_coord, y_coord] if is_valid else float('nan')
-
-    def get_avg_distance(self, laser_scan):
-        dist = 0
-        # Compute the dist for each x, y point in the laser scan
-        for x, y in laser_scan.T:
-            curr_dist = self.get_closest_obstacle_distance(x,y)
-            if not math.isnan(curr_dist):
-                dist += self.get_closest_obstacle_distance(x, y)
-            else:
-                dist += 10
-        # Return the average distance for the entire laser scan
-        return dist / len(laser_scan)
+            return self.closest_occ[x_coord, y_coord] if is_valid else float("nan")

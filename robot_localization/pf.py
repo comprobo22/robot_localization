@@ -2,7 +2,6 @@
 
 """ This is the starter code for the robot localization project """
 
-import pdb
 from typing import List
 import rclpy
 from threading import Thread
@@ -11,7 +10,6 @@ from rclpy.node import Node
 from std_msgs.msg import Header
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import (
-    PoseWithCovarianceStamped,
     PoseArray,
     Pose,
     Point,
@@ -59,25 +57,20 @@ class Particle(object):
         )
 
     def update_position(self, delta, delta_angle):
-        # map_delta = np.array([delta[0], delta[1]])
-        # p_heading = np.array([[np.cos(self.theta), -np.sin(self.theta)], [np.sin(self.theta), np.cos(self.theta)]])
-        # particle_delta = p_heading@map_delta
-        # print(map_delta)
-        # print(self.theta)
-        particle_delta = self.homogeneous_pose@delta
-        # print(particle_delta)
-        # print(delta)
+        """Update the position of a particle based on inputted delta homogeneous matrix and angle change"""
+        particle_delta = self.homogeneous_pose @ delta
         self.x = particle_delta[0][2]
         self.y = particle_delta[1][2]
-        # fix angle
         self.theta += delta_angle
 
     def add_noise(self):
+        """Adds noise to the position of the particle (gaussian distribution)"""
         self.x += np.random.normal(0, self.ODOM_NOISE)
         self.y += np.random.normal(0, self.ODOM_NOISE)
         self.theta += np.random.normal(0, self.ANGLE_NOISE)
 
     def update_weight(self, new_w):
+        """Updates the weight of the particle based on the inputted weight"""
         self.w = new_w
 
     def transform_scan_point_to_map(self, r, theta):
@@ -99,6 +92,7 @@ class Particle(object):
 
     @property
     def homogeneous_pose(self):
+        """Returns the current position and orientation of the particle as a homogeneous array"""
         return np.array(
             [
                 [np.cos(self.theta), -np.sin(self.theta), self.x],
@@ -137,16 +131,11 @@ class ParticleFilter(Node):
         self.odom_frame = "odom"  # the name of the odometry coordinate frame
         self.scan_topic = "scan"  # the topic where we will get laser scans from
 
-        self.n_particles = 800  # the number of particles to use
+        self.n_particles = 20000  # the number of particles to use
         self.d_thresh = 0.2  # the amount of linear movement before performing an update
         self.a_thresh = (
             math.pi / 6
         )  # the amount of angular movement before performing an update
-
-        # pose_listener responds to selection of a new approximate robot location (for instance using rviz)
-        # self.create_subscription(
-        #     PoseWithCovarianceStamped, "initialpose", self.update_initial_pose, 10
-        # )
 
         # publish the current particle cloud.  This enables viewing particles in rviz.
         self.particle_pub = self.create_publisher(
@@ -233,19 +222,10 @@ class ParticleFilter(Node):
             self.initialize_particle_cloud()
         elif self.moved_far_enough_to_update(new_odom_xy_theta):
             # we have moved far enough to do an update!
-            t1 = time.perf_counter()
             self.update_particles_with_odom()  # update based on odometry
-            t2 = time.perf_counter()
             self.update_particles_with_laser(r, theta)  # update based on laser scan
-            t3 = time.perf_counter()
             self.update_robot_pose()  # update robot's pose based on particles
-            t4 = time.perf_counter()
             self.resample_particles()  # resample particles to focus on areas of high density
-            t5 = time.perf_counter()
-            print(f'1: {t2-t1}')
-            print(f'2: {t3-t2}')
-            print(f'3: {t4-t3}')
-            print(f'4: {t5-t4}')
         # publish particles (so things like rviz can see them)
         self.publish_particles(msg.header.stamp)
 
@@ -287,15 +267,49 @@ class ParticleFilter(Node):
         )
         # compute the change in x,y,theta since our last update
         if self.current_odom_xy_theta:
-            delta = np.linalg.inv([[np.cos(self.current_odom_xy_theta[2]), -np.sin(self.current_odom_xy_theta[2]), self.current_odom_xy_theta[0]], [np.sin(self.current_odom_xy_theta[2]), np.cos(self.current_odom_xy_theta[2]), self.current_odom_xy_theta[1]], [0, 0, 1]])@[[np.cos(new_odom_xy_theta[2]), -np.sin(new_odom_xy_theta[2]), new_odom_xy_theta[0]], [np.sin(new_odom_xy_theta[2]), np.cos(new_odom_xy_theta[2]), new_odom_xy_theta[1]], [0, 0, 1]]
+            delta = np.linalg.inv(
+                [
+                    [
+                        np.cos(self.current_odom_xy_theta[2]),
+                        -np.sin(self.current_odom_xy_theta[2]),
+                        self.current_odom_xy_theta[0],
+                    ],
+                    [
+                        np.sin(self.current_odom_xy_theta[2]),
+                        np.cos(self.current_odom_xy_theta[2]),
+                        self.current_odom_xy_theta[1],
+                    ],
+                    [0, 0, 1],
+                ]
+            ) @ [
+                [
+                    np.cos(new_odom_xy_theta[2]),
+                    -np.sin(new_odom_xy_theta[2]),
+                    new_odom_xy_theta[0],
+                ],
+                [
+                    np.sin(new_odom_xy_theta[2]),
+                    np.cos(new_odom_xy_theta[2]),
+                    new_odom_xy_theta[1],
+                ],
+                [0, 0, 1],
+            ]
             delta_angle = new_odom_xy_theta[2] - self.current_odom_xy_theta[2]
             self.current_odom_xy_theta = new_odom_xy_theta
         else:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
-        for particle in self.particle_cloud:
-            particle.update_position(delta, delta_angle)
+        # for each particle, update their position based on the computed delta and if this causes the particle to go off the map,
+        # remove it from the particle cloud
+        for index in reversed(range(len(self.particle_cloud))):
+            self.particle_cloud[index].update_position(delta, delta_angle)
+            if math.isnan(
+                self.occupancy_field.get_closest_obstacle_distance(
+                    self.particle_cloud[index].x, self.particle_cloud[index].y
+                )
+            ):
+                self.particle_cloud.pop(index)
 
     def resample_particles(self):
         """Resample the particles according to the new particle weights.
@@ -329,7 +343,11 @@ class ParticleFilter(Node):
             # Project the laser scan onto each particle
             laser_scan_map_frame = particle.transform_scan_to_map(r, theta)
             # Compute the average distance to nearby obstacles for the laser scan
-            avg_dist = np.nansum(self.occupancy_field.get_closest_obstacle_distance(laser_scan_map_frame[0,:], laser_scan_map_frame[1,:]))
+            avg_dist = np.nansum(
+                self.occupancy_field.get_closest_obstacle_distance(
+                    laser_scan_map_frame[0, :], laser_scan_map_frame[1, :]
+                )
+            )
             # Update the particle's weight based on the inverse average distance
             particle.update_weight(1 / avg_dist**2)
 
@@ -343,10 +361,18 @@ class ParticleFilter(Node):
         """Initialize the particle cloud."""
         map_bounds = self.occupancy_field.get_obstacle_bounding_box()
         while len(self.particle_cloud) < self.n_particles:
-            rand_x = np.random.uniform(low=map_bounds[0][0], high=map_bounds[0][1], size=(1))[0]
-            rand_y = np.random.uniform(low=map_bounds[1][0], high=map_bounds[1][1], size=(1))[0]
-            rand_theta = np.random.uniform(low=0, high=2*np.pi, size=(1))[0]
-            if not math.isnan(self.occupancy_field.get_closest_obstacle_distance(rand_x, rand_y)):
+            # get a random x, y, theta within the bounding box of the map
+            rand_x = np.random.uniform(
+                low=map_bounds[0][0], high=map_bounds[0][1], size=(1)
+            )[0]
+            rand_y = np.random.uniform(
+                low=map_bounds[1][0], high=map_bounds[1][1], size=(1)
+            )[0]
+            rand_theta = np.random.uniform(low=0, high=2 * np.pi, size=(1))[0]
+            # if the randomly generated point is within the scope of the map, add it to the particle cloud
+            if not math.isnan(
+                self.occupancy_field.get_closest_obstacle_distance(rand_x, rand_y)
+            ):
                 self.particle_cloud.append(
                     Particle(x=rand_x, y=rand_y, w=1.0, theta=rand_theta)
                 )
