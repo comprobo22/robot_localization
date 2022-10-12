@@ -185,9 +185,11 @@ class ParticleFilter(Node):
         # TODO: assign the latest pose into self.robot_pose as a geometry_msgs.Pose object
         # just to get started we will fix the robot's pose to always be at the origin
         self.robot_pose = Pose()
-
-        self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
-                                                        self.odom_pose)
+        if hasattr(self, 'odom_pose'):
+            self.transform_helper.fix_map_to_odom_transform(self.robot_pose,
+                                                            self.odom_pose)
+        else:
+            self.get_logger().warn("Can't set map->odom transform since no odom data received")
 
     def update_particles_with_odom(self):
         """ Update the particles using the newly given odometry pose.
@@ -245,6 +247,7 @@ class ParticleFilter(Node):
         # TODO create particles
 
         self.normalize_particles()
+        self.update_robot_pose()
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
