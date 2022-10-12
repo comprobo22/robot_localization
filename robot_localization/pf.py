@@ -28,6 +28,10 @@ from angle_helpers import quaternion_from_euler
 class Particle(object):
     """Represents a hypothesis (particle) of the robot's pose consisting of x,y and theta (yaw)
     Attributes:
+        ANGLE_NOISE: the standard deviation of the gaussian distribution being used to add noise
+            to the orientation of a particle.
+        ODOM_NOISE: the standard deviation of the gaussian distribution being used to add noise
+            to the position (x,y) of the particle.
         x: the x-coordinate of the hypothesis relative to the map frame
         y: the y-coordinate of the hypothesis relative ot the map frame
         theta: the yaw of the hypothesis relative to the map frame
