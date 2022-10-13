@@ -19,7 +19,7 @@ class OccupancyField(object):
         # grab the map from the map server
         self.cli = node.create_client(GetMap, 'map_server/map')
         while not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('service not available, waiting again...')
+            node.get_logger().info('service not available, waiting again...')
         self.future = self.cli.call_async(GetMap.Request())
         rclpy.spin_until_future_complete(node, self.future)
         self.map = self.future.result().map
