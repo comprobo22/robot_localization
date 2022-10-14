@@ -53,6 +53,7 @@ Towards our goal of solving the kidnapped robot problem, we were successful in c
 
 ### Gauntlet World
 ![Gauntlet PF](/images/pf_gauntlet.gif)
+
 This gif shows the results of running a particle filter on the gauntlet world. It very quickly is able to converge to the robot's actual location because of the very distinct features in the map.
 
 ### First Floor MAC
