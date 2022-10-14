@@ -14,7 +14,10 @@ class OccupancyField(object):
         map: the map to localize against (nav_msgs/OccupancyGrid)
         closest_occ: the distance for each entry in the OccupancyGrid to
         the closest obstacle
+        NAN_DISTANCE: distance for when nan position is queried
     """
+
+    NAN_DISTANCE = 100
 
     def __init__(self, node):
         # grab the map from the map server
@@ -120,7 +123,7 @@ class OccupancyField(object):
             & (y_coord < self.map.info.height)
         )
         if type(x) is np.ndarray:
-            distances = 10 * np.ones(x_coord.shape)
+            distances = self.NAN_DISTANCE * np.ones(x_coord.shape)
             distances[is_valid] = self.closest_occ[x_coord[is_valid], y_coord[is_valid]]
             return distances
         else:

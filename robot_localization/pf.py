@@ -126,7 +126,13 @@ class ParticleFilter(Node):
         current_odom_xy_theta: the pose of the robot in the odometry frame when the last filter update was performed.
                                The pose is expressed as a list [x,y,theta] (where theta is the yaw)
         thread: this thread runs your main loop
+        DECAY_FACTOR: rate at which n_particles is reduced by on each update
+        LASER_ST_DEV: variance of gaussian distribution that converts average distance of projected laser scan to
+            probability of the particle representing the true particle
     """
+
+    DECAY_FACTOR = 0.96
+    LASER_ST_DEV = 0.2
 
     def __init__(self):
         super().__init__("pf")
@@ -230,6 +236,8 @@ class ParticleFilter(Node):
             self.update_particles_with_laser(r, theta)  # update based on laser scan
             self.update_robot_pose()  # update robot's pose based on particles
             self.resample_particles()  # resample particles to focus on areas of high density
+            if self.n_particles > 100:
+                self.n_particles = int(self.n_particles * self.DECAY_FACTOR)
         # publish particles (so things like rviz can see them)
         self.publish_particles(msg.header.stamp)
 
@@ -351,9 +359,14 @@ class ParticleFilter(Node):
                 self.occupancy_field.get_closest_obstacle_distance(
                     laser_scan_map_frame[0, :], laser_scan_map_frame[1, :]
                 )
+            ) / len(self.particle_cloud)
+            # Update the particle's weight based on the gaussian of the average distance
+            gaussian = (
+                1
+                / (self.LASER_ST_DEV * (2 * np.pi) ** 0.5)
+                * math.exp(-0.5 * (avg_dist / self.LASER_ST_DEV) ** 2)
             )
-            # Update the particle's weight based on the inverse average distance
-            particle.update_weight(1 / avg_dist**2)
+            particle.update_weight(gaussian)
 
     def update_initial_pose(self, msg):
         """Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -386,8 +399,12 @@ class ParticleFilter(Node):
         """Make sure the particle weights define a valid distribution (i.e. sum to 1.0)"""
         # Divide each particle's weight by the total weight of all particles
         weight_total = sum([particle.w for particle in self.particle_cloud])
-        for particle in self.particle_cloud:
-            particle.update_weight(particle.w / weight_total)
+        if weight_total != 0.0:
+            for particle in self.particle_cloud:
+                particle.update_weight(particle.w / weight_total)
+        else:
+            for particle in self.particle_cloud:
+                particle.update_weight(1 / len(self.particle_cloud))
 
     def publish_particles(self, timestamp):
         particles_conv = []
