@@ -58,10 +58,12 @@ This gif shows the results of running a particle filter on the gauntlet world. I
 
 ### First Floor MAC
 ![First Floor MAC PF](/images/pf_mac_first_floor.gif)
+
 This gif shows the results of running a particle filter on a map of the first floor of the MAC. It takes a significant amount of time and filtering out other particles, but it is able to converge onto the final position of the robot by the end of the bag file.
 
 ### Full MAC
 ![Full MAC PF](images/pf_mac_full_close.gif)
+
 This gif shows the results of running a particle filter on a map of the full MAC (all four floors side-by-side). Towards the end of the given bag file the best particle oscilates between the actual position of the robot and an incorrect position, however, it is not able to fully converge on the actual position.
 
 ## Reflection
